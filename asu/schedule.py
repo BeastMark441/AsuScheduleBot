@@ -39,8 +39,6 @@ def get_timetable(schedule_url: str) -> str:
         "Referer": schedule_url
     }
 
-    print(schedule_url)
-
     response = session.get(schedule_url, headers=custom_headers)
 
     if response.status_code != 200:
