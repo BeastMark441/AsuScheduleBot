@@ -1,12 +1,11 @@
 import requests
 import re
-import logging
 from bs4 import BeautifulSoup
 from md2tgmd import escape
 
 session = requests.Session()
 
-def find_group_url(group_name: str):
+def find_schedule_url(group_name: str):
     search_url = f"https://www.asu.ru/timetable/search/students/?query={group_name}"
     response = session.get(search_url)
 
@@ -19,7 +18,7 @@ def find_group_url(group_name: str):
 
     return None
 
-def get_id(url: str) -> str:
+def __get_id(url: str) -> str:
     response = session.get(url)
     pattern = r"'X-CS-ID', '([0-9a-z]{32})'"
     match = re.search(pattern, response.text)
@@ -30,7 +29,7 @@ def get_id(url: str) -> str:
     return match.group(1)
 
 def get_timetable(schedule_url: str) -> str:
-    cs_id = get_id(schedule_url)
+    cs_id = __get_id(schedule_url)
 
     custom_headers = {
         "Accept": "*/*",
@@ -46,7 +45,7 @@ def get_timetable(schedule_url: str) -> str:
     
     return response.text
 
-def translate_pair_number(pair_number: str) -> str:
+def __translate_pair_number(pair_number: str) -> str:
     emoji_numbers = ["0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"]
 
     if pair_number.isdigit() and int(pair_number) < 10:
@@ -72,7 +71,8 @@ def format_schedule(response_text: str, schedule_link: str, group_name: str) -> 
     for row in rows:
         date_cell = row.find('td', {'data-type': 'date'})
         if date_cell:
-            current_date = date_cell.get_text(strip=True).strip()
+            date_split = list(filter(None, date_cell.get_text(strip=True).strip().split(' ')))
+            current_date = date_split[0] + " " + date_split[1]
             continue
 
         # Извлечение данных о паре
@@ -81,12 +81,8 @@ def format_schedule(response_text: str, schedule_link: str, group_name: str) -> 
         subject_cell = row.find('td', {'data-type': 'subject'})
         lecturer_cell = row.find('td', {'data-type': 'lecturer'})
         room_cell = row.find('td', {'data-type': 'room'})
-        modify_date_cell = row.find('td', {'data-type': 'modify_date'})
         subtext_cell = row.find('span', class_='schedule_table-subtext')
 
-        date_split: list[str] = [i for i in current_date.strip().split(' ') if i]
-
-        date_stripped = date_split[0] + " " + date_split[1]
         pair_number = pair_number_cell.get_text(strip=True) if pair_number_cell else "Номер пары не указан"
         time = time_cell.get_text(strip=True) if time_cell else "Время не указано"
         subject = subject_cell.get_text(strip=True) if subject_cell else "Предмет не указан"
@@ -101,19 +97,18 @@ def format_schedule(response_text: str, schedule_link: str, group_name: str) -> 
 
         # Форматируем вывод
         formatted_row = (
-            f"{translate_pair_number(pair_number)} "
-            f"🕑 {time}\n"
+            f"{__translate_pair_number(pair_number)}🕑 {time}\n"
             f"📚 {subject}\n"
             f"👩 {lecturer}\n"
             f"🏢 {room}\n"
         )
 
         if subtext:
-            formatted_row += f"🏷️ {subtext}\n"  # Выделяем сноску на отдельной строке
+            formatted_row += f"🏷️ {subtext}\n"
 
-        if date_stripped not in days_schedule:
-            days_schedule[date_stripped] = []
-        days_schedule[date_stripped].append(formatted_row)
+        if current_date not in days_schedule:
+            days_schedule[current_date] = []
+        days_schedule[current_date].append(formatted_row)
 
     # Объединяем расписание по дням
     for date, entries in days_schedule.items():
