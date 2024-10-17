@@ -18,7 +18,6 @@
     ```bash
     pip install -r requirements.txt
     ```
-    Не забудьте про браузер. _(В моём случае FireFox)_
 
 ## Использование
 
@@ -29,7 +28,7 @@ TOKEN = 'YOUR_BOT_TOKEN'
 
 # Запуск бота
 ```bash
-python ./bot.py
+python3 ./bot.py
 ```
 
 # Команды бота
