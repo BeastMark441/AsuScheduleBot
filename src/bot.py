@@ -5,6 +5,8 @@ from bs4 import BeautifulSoup
 import asyncio
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from dotenv import load_dotenv
+import os
 
 # Функция для поиска расписания
 def find_schedule(group_name: str):
@@ -147,7 +149,10 @@ async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Основная функция
 def main():
-    TOKEN = 'TODO'  # Укажите ваш токен бота
+
+    load_dotenv()
+    TOKEN = os.getenv('TOKEN')
+    assert TOKEN is not None
 
     application = ApplicationBuilder().token(TOKEN).build()
 
