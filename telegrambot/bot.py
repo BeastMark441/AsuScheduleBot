@@ -1,7 +1,7 @@
 import logging
 from telegram.ext import Application, CommandHandler
 
-from .commandHandlers import schedule_callback
+from .commandHandlers import *
 
 class TelegramBot():
     def __init__(self, token: str):
@@ -18,6 +18,7 @@ class TelegramBot():
         application = builder.build()
 
         # todo add start command handler
+        application.add_handler(CommandHandler("start", start_callback))
         application.add_handler(CommandHandler("schedule", schedule_callback))
 
         application.run_polling()

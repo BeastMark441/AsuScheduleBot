@@ -1,9 +1,19 @@
 import asyncio
 
-from telegram import Update
+import telegram
+from telegram import Update, ForceReply
 from telegram.ext import ContextTypes
 
 import asu.schedule as asu
+
+async def start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    await update.message.reply_html(
+        f"Привет, {user.mention_html()}! Это бот для поиска расписания студентов и преподавателей АлтГУ.\n" +
+            "Используй контектстное меню или команды для взаимодействия с ботом.\n" +
+            "Если возникли ошибки или есть идеи напиши Нам.\n" +
+            "Контакты в описании бота"
+    )
 
 async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if len(context.args) == 0:
@@ -23,6 +33,6 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             await update.message.reply_text(response_text)
         else:
             formatted_timetable = asu.format_schedule(response_text, schedule_url, group_name)
-            await update.message.reply_text(formatted_timetable, parse_mode='MarkdownV2')
+            await update.message.reply_text(formatted_timetable, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
     else:
         await update.message.reply_text("Ошибка получении группы")
