@@ -5,8 +5,8 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler, ConversationHandler
 
-import asu.schedule as asu
-from asu.group import Schedule
+import asu
+from asu import Schedule
 
 async def start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
@@ -28,7 +28,7 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     message = update.message
     message = await message.reply_text(text=f'Ищу расписание для группы: {group_name}...')
 
-    group = asu.find_schedule_url(group_name)
+    group = await asu.find_schedule_url(group_name)
 
     if group:
         # Запрос выбора расписания
@@ -54,16 +54,17 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if len(data) != 3:
         # ban the user?
         return
-
+    
     option = data[0].strip()
     faculty_id= data[1].strip()
     group_id = data[2].strip()
 
-    group = Schedule("", int(faculty_id), int(group_id))
+    schedule = Schedule("", int(faculty_id), int(group_id))
+    schedule.name = await asu.get_group_name(schedule) or ""
 
     await asyncio.sleep(1)
 
-    response_text = asu.get_timetable(group.get_schedule_url())
+    response_text = await asu.get_timetable(schedule.get_schedule_url())
     if isinstance(response_text, int):
         await query.edit_message_text("Произошла ошибка при получении расписания")
         logging.error(f'Ошибка {response_text} при получении расписания')
@@ -75,6 +76,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     }
     target_time = options.get(option)
 
-    formatted_timetable = asu.format_schedule(response_text, group.get_schedule_url(), "", target_time)
+    formatted_timetable = asu.format_schedule(response_text, schedule.get_schedule_url(print_mode=False), schedule.name, target_time)
 
     await query.edit_message_text(formatted_timetable, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)

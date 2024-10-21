@@ -1,7 +1,7 @@
 import logging
 from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters
 
-from .commandHandlers import *
+from .commands import *
 
 class TelegramBot():
     def __init__(self, token: str):
