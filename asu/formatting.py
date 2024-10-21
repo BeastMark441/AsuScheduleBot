@@ -1,24 +1,22 @@
 from datetime import datetime
 from typing import Dict, List, Optional
 
-import bs4
 from frozenlist import FrozenList
 from md2tgmd import escape as escape_markdown
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
-def __extract_text_or_default(cell, default: str) -> str:
-    return cell.get_text(strip=True) if cell else default
+def __extract_text(cell: Optional[Tag], default: str) -> str:
+    return cell.get_text(strip=True, separator=' ').strip() if cell else default
 
+_weekdays = FrozenList(["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"])
 def __get_weekday(weekday: int) -> str:
-    weekdays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
-
-    if weekday >= len(weekdays):
+    if weekday >= len(_weekdays):
         return ""
     
-    return weekdays[weekday]
+    return _weekdays[weekday]
 
 _emoji_numbers = FrozenList(("0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"))
-def __translate_pair_number(num: str) -> str:
+def __num_to_emoji(num: str) -> str:
     if num.isdigit() and (int(num) - 1) < len(_emoji_numbers):
         return _emoji_numbers[int(num) - 1]
     
@@ -28,14 +26,15 @@ def format_schedule(response_text: str, schedule_link: str, group_name: str, tar
     soup = BeautifulSoup(response_text, 'html.parser')
     timetable = soup.find('table', class_='schedule_table')
 
-    if not timetable or not isinstance(timetable, bs4.Tag):
+    if not timetable or not isinstance(timetable, Tag):
         return "Расписание не найдено или нет занятий"
 
     formatted_schedule = [f"📚 Расписание для группы: {group_name}\n"]
     current_date = datetime.now()
     days_schedule: Dict[datetime, List[str]] = {}
 
-    for row in timetable.find_all('tr', class_='schedule_table-body-row'):
+    row: Tag
+    for row in timetable.find_all_next('tr', class_='schedule_table-body-row'): # type: ignore
         date_cell = row.find('td', {'data-type': 'date'})
         if date_cell:
             current_date = datetime.strptime(
@@ -44,18 +43,18 @@ def format_schedule(response_text: str, schedule_link: str, group_name: str, tar
             continue
 
         # Извлечение данных о паре
-        pair_number = __extract_text_or_default(row.find('td', {'data-type': 'num'}), "Номер пары не указан")
-        time = __extract_text_or_default(row.find('td', {'data-type': 'time'}), "Время не указано")
-        subject = __extract_text_or_default(row.find('td', {'data-type': 'subject'}), "Предмет не указан")
-        lecturer = __extract_text_or_default(row.find('td', {'data-type': 'lecturer'}), "Преподаватель не указан")
-        room = __extract_text_or_default(row.find('td', {'data-type': 'room'}), "Аудитория не указана")
-        subtext = __extract_text_or_default(row.find('span', class_='schedule_table-subtext'), "")
+        pair_number = __extract_text(row.find('td', {'data-type': 'num'}), "Номер пары не указан") # type: ignore
+        time = __extract_text(row.find('td', {'data-type': 'time'}), "Время не указано") # type: ignore
+        subject = __extract_text(row.find('td', {'data-type': 'subject'}), "Предмет не указан") # type: ignore
+        lecturer = __extract_text(row.find('td', {'data-type': 'lecturer'}), "Преподаватель не указан") # type: ignore
+        room = __extract_text(row.find('td', {'data-type': 'room'}), "Аудитория не указана") # type: ignore
+        subtext = __extract_text(row.find('span', class_='schedule_table-subtext'), "") # type: ignore
 
         if subtext:
             subject = subject.replace(subtext, '')
 
         formatted_row = (
-            f"{__translate_pair_number(pair_number)}🕑 {time}\n"
+            f"{__num_to_emoji(pair_number)}🕑 {time}\n"
             f"📚 {subject}\n"
             f"👩 {lecturer}\n"
             f"🏢 {room}\n"
