@@ -1,25 +1,31 @@
 import requests
 import re
 import logging
+from .group import Schedule
 from bs4 import BeautifulSoup
 from md2tgmd import escape
+from datetime import datetime, timedelta, time
+from typing import Optional, Union
 
 session = requests.Session()
 
-def find_group_url(group_name: str):
-    search_url = f"https://www.asu.ru/timetable/search/students/?query={group_name}"
+def find_schedule_url(group_name: str) -> Schedule | None:
+    search_url = f"https://www.asu.ru/timetable/search/students/?query={group_name}&mode=print"
     response = session.get(search_url)
 
     if response.status_code == 200:
         soup = BeautifulSoup(response.text, 'html.parser')
         schedule_link = soup.find('a', title='расписание группы')
 
+        pattern = r"\/timetable\/students\/([0-9]+)\/([0-9]+)"
+        match = re.search(pattern, schedule_link['href'])
+
         if schedule_link:
-            return "https://www.asu.ru" + schedule_link['href'] + "?mode=print"
+            return Schedule(schedule_link.get_text(strip=True), match.group(1), match.group(2))
 
     return None
 
-def get_id(url: str) -> str:
+def __get_id(url: str) -> str:
     response = session.get(url)
     pattern = r"'X-CS-ID', '([0-9a-z]{32})'"
     match = re.search(pattern, response.text)
@@ -29,8 +35,8 @@ def get_id(url: str) -> str:
 
     return match.group(1)
 
-def get_timetable(schedule_url: str) -> str:
-    cs_id = get_id(schedule_url)
+def get_timetable(schedule_url: str) -> str | int:
+    cs_id = __get_id(schedule_url)
 
     custom_headers = {
         "Accept": "*/*",
@@ -42,20 +48,27 @@ def get_timetable(schedule_url: str) -> str:
     response = session.get(schedule_url, headers=custom_headers)
 
     if response.status_code != 200:
-        return f"Ошибка при получении расписания. Код ошибки {response.status_code}"
+        return response.status_code
     
     return response.text
 
-def translate_pair_number(pair_number: str) -> str:
+def __translate_pair_number(pair_number: str) -> str:
     emoji_numbers = ["0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"]
 
     if pair_number.isdigit() and int(pair_number) < 10:
         return emoji_numbers[int(pair_number)]
     else:
         return "❓"  # Если номер пары выходит за пределы 0-9
+    
+def __get_weekday(weekday_num: int) -> str:
+    weekdays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
 
-# Функция для форматирования расписания
-def format_schedule(response_text: str, schedule_link: str, group_name: str) -> str:
+    if weekday_num >= len(weekdays):
+        return ""
+    
+    return weekdays[weekday_num]
+
+def format_schedule(response_text: str, schedule_link: str, group_name: str, target_date: Optional[datetime]=None) -> str:
     soup = BeautifulSoup(response_text, 'html.parser')
     timetable = soup.find('table', class_='schedule_table')
 
@@ -63,16 +76,18 @@ def format_schedule(response_text: str, schedule_link: str, group_name: str) -> 
         return "Расписание не найдено или нет занятий"
 
     formatted_schedule = []
-    formatted_schedule.append(f"📚 Расписание для группы: {group_name}\n🚀 На текущую неделю\n")
+    #formatted_date = target_date.strftime(format='%d.%m.%Y') if target_date else f"{datetime.now().strftime(format='%d.%m.%Y')} {(datetime.now() + timedelta(days=7)).strftime(format='%d.%m.%Y')}"
+    formatted_schedule.append(f"📚 Расписание для группы: {group_name}\n")
 
-    current_date = ""
-    days_schedule = {}  # Словарь для группировки расписания по дням
+    current_date: datetime = datetime.now()
+    days_schedule: dict[datetime, list[str]] = {}  # Словарь для группировки расписания по дням
 
     rows = timetable.find_all('tr', class_='schedule_table-body-row')
     for row in rows:
         date_cell = row.find('td', {'data-type': 'date'})
         if date_cell:
-            current_date = date_cell.get_text(strip=True).strip()
+            date_split = list(filter(None, date_cell.get_text(strip=True).strip().split(' ')))
+            current_date = datetime.strptime(date_split[1], "%d.%m.%Y")
             continue
 
         # Извлечение данных о паре
@@ -81,17 +96,13 @@ def format_schedule(response_text: str, schedule_link: str, group_name: str) -> 
         subject_cell = row.find('td', {'data-type': 'subject'})
         lecturer_cell = row.find('td', {'data-type': 'lecturer'})
         room_cell = row.find('td', {'data-type': 'room'})
-        modify_date_cell = row.find('td', {'data-type': 'modify_date'})
         subtext_cell = row.find('span', class_='schedule_table-subtext')
 
-        date_split: list[str] = [i for i in current_date.strip().split(' ') if i]
-
-        date_stripped = date_split[0] + " " + date_split[1]
         pair_number = pair_number_cell.get_text(strip=True) if pair_number_cell else "Номер пары не указан"
         time = time_cell.get_text(strip=True) if time_cell else "Время не указано"
         subject = subject_cell.get_text(strip=True) if subject_cell else "Предмет не указан"
         lecturer = lecturer_cell.get_text(strip=True) if lecturer_cell else "Преподаватель не указан"
-        room = room_cell.get_text(strip=True).strip() if room_cell else "Аудитория не указана"; room = room if room else "ауд не указана"
+        room = room_cell.get_text(strip=True).strip() if room_cell else "Аудитория не указана"; room = room if room else "Аудитория не указана"
 
         # Сноска, если есть
         subtext = subtext_cell.get_text(strip=True) if subtext_cell else ""
@@ -101,23 +112,23 @@ def format_schedule(response_text: str, schedule_link: str, group_name: str) -> 
 
         # Форматируем вывод
         formatted_row = (
-            f"{translate_pair_number(pair_number)} "
-            f"🕑 {time}\n"
+            f"{__translate_pair_number(pair_number)}🕑 {time}\n"
             f"📚 {subject}\n"
             f"👩 {lecturer}\n"
             f"🏢 {room}\n"
         )
 
         if subtext:
-            formatted_row += f"🏷️ {subtext}\n"  # Выделяем сноску на отдельной строке
+            formatted_row += f"🏷️ {subtext}\n"
 
-        if date_stripped not in days_schedule:
-            days_schedule[date_stripped] = []
-        days_schedule[date_stripped].append(formatted_row)
+        if current_date not in days_schedule:
+            days_schedule[current_date] = []
+        days_schedule[current_date].append(formatted_row)
 
     # Объединяем расписание по дням
     for date, entries in days_schedule.items():
-        formatted_schedule.append(f"📅 {date}\n" + "\n".join(entries))
+        if not target_date or date.date() == target_date.date():
+            formatted_schedule.append(f"📅 {__get_weekday(date.weekday())} {date.strftime('%d.%m')}\n" + "\n".join(entries))
 
     formatted_schedule.append(f"🚀 [Ссылка на расписание]({schedule_link})")
 
