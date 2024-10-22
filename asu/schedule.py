@@ -1,5 +1,5 @@
 class Schedule():
-    def __init__(self, name: str, faculty_id: int, group_id: int):
+    def __init__(self, name: str, faculty_id: int, group_id: int) -> None:
         self.name = name
         self.faculty_id = faculty_id
         self.group_id = group_id

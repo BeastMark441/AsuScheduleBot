@@ -59,7 +59,7 @@ async def get_group_name(schedule: Schedule) -> Optional[str]:
 
     response = await client.get(url)
     
-    if response:
+    if response.status_code == 200:
         soup = BeautifulSoup(response.text, 'html.parser')
         return (soup.find("h1")
             .get_text(strip=True)
