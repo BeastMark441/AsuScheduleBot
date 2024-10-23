@@ -1,5 +1,6 @@
 import os
 import logging
+from sys import stdout
 from dotenv import load_dotenv
 
 from telegrambot import TelegramBot
@@ -9,12 +10,23 @@ def setup_logging() -> None:
     if os.getenv("DEV") == 'True':
         level = logging.DEBUG
 
-    logging.basicConfig(
-        format='[%(asctime)s %(levelname)s][%(name)s] %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S',
-        filename='latest.log', encoding='utf-8',
-        level=level
-    )
+    rootLogger = logging.getLogger("")
+
+    rootLogger.setLevel(level)
+
+    fileFormatter = logging.Formatter("[%(asctime)s %(levelname)s][%(name)s] %(message)s", datefmt='%Y-%m-%d %H:%M:%S')
+    fileHandler = logging.FileHandler("latest.log", "w", encoding="utf-8")
+    fileHandler.setFormatter(fileFormatter)
+
+    rootLogger.addHandler(fileHandler)
+
+    consoleFormatter = logging.Formatter("[%(asctime)s %(levelname)s][%(name)s] %(message)s", datefmt="%H:%M:%S")
+    consoleHandler = logging.StreamHandler(stdout)
+    consoleHandler.setFormatter(consoleFormatter)
+
+    rootLogger.addHandler(consoleHandler)
+
+    rootLogger.setLevel(level)
 
     # removes spam
     logging.getLogger("httpx").setLevel(logging.WARNING)
