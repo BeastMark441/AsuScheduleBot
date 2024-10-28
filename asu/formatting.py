@@ -1,42 +1,84 @@
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 from telegram.helpers import escape_markdown
+import logging
 
-def format_schedule(timetable_data: Dict, schedule_link: str, group_name: str, target_date: Optional[datetime] = None) -> str:
+def format_schedule(timetable_data: Dict, schedule_link: str, group_name: str, target_date: Optional[Union[datetime, 'ScheduleRequest']] = None) -> str:
+    logging.info(f"Форматирование расписания для группы {group_name}. Данные: {timetable_data}")
+    
     # Формируем заголовок расписания
     formatted_schedule = [f"📚 Расписание для группы: {escape_markdown(group_name, version=2)}\n"]
     
     days = timetable_data.get("days", [])
     if not days:
-        # Если нет данных о днях, добавляем сообщение об отсутствии расписания
-        formatted_schedule.append("Расписание не найдено или нет занятий на указанный период\\.")
+        logging.warning(f"Нет данных о днях в расписании для группы {group_name}")
+        formatted_schedule.append("На указанный период занятий не найдено\\.")
     else:
-        # Определяем начало и конец недели для target_date
-        start_of_week = target_date - timedelta(days=target_date.weekday())
-        end_of_week = start_of_week + timedelta(days=6)
-        
-        for day in days:
-            date = datetime.strptime(day["date"], "%Y-%m-%d")
-            if start_of_week <= date <= end_of_week:
-                # Форматируем дату и добавляем ее в расписание
-                formatted_date = date.strftime('%d\\.%m')  # Экранируем точку
-                formatted_schedule.append(f"📅 {get_weekday(date.weekday())} {formatted_date}\n")
-                
-                lessons = day.get("lessons", [])
-                if not lessons:
-                    formatted_schedule.append("Нет занятий\n")
+        # Определяем период для фильтрации
+        if target_date:
+            if hasattr(target_date, 'is_week_request') and target_date.is_week_request:
+                # Для недельного запроса используем всю неделю
+                start_of_week = target_date.date - timedelta(days=target_date.date.weekday())
+                end_of_week = start_of_week + timedelta(days=6)
+                logging.info(f"Фильтруем по периоду недели: {start_of_week} - {end_of_week}")
+            else:
+                # Для конкретного дня используем только этот день
+                if hasattr(target_date, 'date'):
+                    start_of_week = end_of_week = target_date.date
                 else:
-                    # Форматируем каждое занятие и добавляем в расписание
-                    for lesson in lessons:
-                        formatted_lesson = format_lesson(lesson)
-                        formatted_schedule.append(formatted_lesson)
-                formatted_schedule.append("")  # Пустая строка между днями
+                    start_of_week = end_of_week = target_date
+                logging.info(f"Фильтруем по конкретной дате: {start_of_week}")
+        else:
+            # Если дата не указана, показываем все дни
+            start_of_week = end_of_week = None
+            logging.info("Дата не указана, показываем все дни")
+        
+        found_lessons = False
+        # Сортируем дни по дате
+        sorted_days = sorted(days, key=lambda x: x["date"])
+        
+        for day in sorted_days:
+            date = datetime.strptime(day["date"], "%Y-%m-%d")
+            
+            # Проверяем, попадает ли день в указанный период
+            if start_of_week and end_of_week:
+                if isinstance(start_of_week, datetime):
+                    start_date = start_of_week.date()
+                    end_date = end_of_week.date()
+                else:
+                    start_date = start_of_week
+                    end_date = end_of_week
+                
+                if not (start_date <= date.date() <= end_date):
+                    logging.debug(f"Пропускаем день {date.date()}, не входит в период {start_date} - {end_date}")
+                    continue
+            
+            found_lessons = True
+            formatted_date = date.strftime('%d\\.%m')
+            formatted_schedule.append(f"📅 {get_weekday(date.weekday())} {formatted_date}\n")
+            
+            lessons = day.get("lessons", [])
+            if not lessons:
+                formatted_schedule.append("Нет занятий\n")
+            else:
+                # Сортируем занятия по номеру пары
+                sorted_lessons = sorted(lessons, key=lambda x: int(x.get("number", "0")))
+                for lesson in sorted_lessons:
+                    formatted_lesson = format_lesson(lesson)
+                    formatted_schedule.append(formatted_lesson)
+                formatted_schedule.append("")
+        
+        if not found_lessons:
+            logging.warning(f"Не найдено занятий в указанный период для группы {group_name}")
+            formatted_schedule.append("На указанный период занятий не найдено\\.")
     
     # Добавляем ссылку на полное расписание
     escaped_link = schedule_link.replace(".", "\\.")
     formatted_schedule.append(f"🚀 [Ссылка на расписание]({escaped_link})")
     
-    return "\n".join(formatted_schedule)
+    result = "\n".join(formatted_schedule)
+    logging.info(f"Сформированное расписание: {result}")
+    return result
 
 def format_lesson(lesson: Dict) -> str:
     # Извлекаем и форматируем данные о занятии

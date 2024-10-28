@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta
-from typing import Optional, Union
+from typing import Optional, Union, NamedTuple
 import telegram
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -12,6 +12,10 @@ END = ConversationHandler.END
 GET_GROUP_NAME, SHOW_SCHEDULE, SAVE_GROUP = range(3)
 
 SELECTED_SCHEDULE = 'schedule'
+
+class ScheduleRequest(NamedTuple):
+    date: datetime
+    is_week_request: bool = False
 
 def get_next_weekday(d, weekday):
     # Функция для получения следующего заданного дня недели
@@ -138,46 +142,37 @@ async def cleansavegroup_callback(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text("У вас нет сохраненной группы.")
 
 async def handle_show_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    # Обработчик показа расписания
     query = update.callback_query
     await query.answer()
 
     today = datetime.now()
-    options = {
-        'T': today,
-        'M': today + timedelta(days=1),
-        'W': today - timedelta(days=today.weekday()),  # Начало текущей недели
-        'NW': today + timedelta(days=7 - today.weekday())  # Начало следующей недели
-    }
-    target_time = options.get(query.data)
+    
+    if query.data == 'T':
+        # Сегодня
+        target_time = ScheduleRequest(today)
+    elif query.data == 'M':
+        # Завтра
+        target_time = ScheduleRequest(today + timedelta(days=1))
+    elif query.data == 'W':
+        # Текущая неделя
+        week_start = today - timedelta(days=today.weekday())
+        target_time = ScheduleRequest(week_start, is_week_request=True)
+    else:  # NW
+        # Следующая неделя
+        next_week = today + timedelta(days=7-today.weekday())
+        target_time = ScheduleRequest(next_week, is_week_request=True)
+
     selected_schedule: Schedule = context.user_data[SELECTED_SCHEDULE]
 
-    # Обработка специальных случаев (выходные дни)
-    if query.data == 'M' and today.weekday() >= 5:
-        next_monday = get_next_weekday(today, 0)  # 0 = Monday
-        message = "В воскресенье пар нет\\. Вот расписание на понедельник следующей недели:\n\n"
-        target_time = next_monday
-    elif query.data == 'T' and today.weekday() == 6:
-        next_monday = get_next_weekday(today, 0)  # 0 = Monday
-        message = "Сегодня воскресенье, пар нет\\. Вот расписание на завтра \\(понедельник\\):\n\n"
-        target_time = next_monday
-    elif query.data == 'W':
-        message = "Расписание на текущую неделю:\n\n"
-    elif query.data == 'NW':
-        message = "Расписание на следующую неделю:\n\n"
-    else:
-        message = ""
-
     try:
-        # Получение и форматирование расписания
         timetable_data = await asu.get_timetable(selected_schedule, target_time)
         formatted_timetable = asu.format_schedule(
             timetable_data,
             selected_schedule.get_schedule_url(print_mode=False),
             selected_schedule.name,
-            target_time
+            target_time  # Передаем объект ScheduleRequest напрямую
         )
-        await query.edit_message_text(message + formatted_timetable, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
+        await query.edit_message_text(formatted_timetable, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
     except Exception as e:
         logging.error(f"Ошибка при получении расписания: {e}")
         error_message = f"Произошла ошибка при получении расписания: {str(e)}\\. Пожалуйста, попробуйте позже\\."
