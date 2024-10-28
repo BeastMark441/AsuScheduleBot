@@ -121,7 +121,7 @@ async def show_schedule_options(update: Update, context: ContextTypes.DEFAULT_TY
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     schedule = context.user_data[SELECTED_SCHEDULE]
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
             f"📚 Группа {schedule.name}\nВыберите, на какой день хотите получить расписание:",
             reply_markup=reply_markup)
     
