@@ -30,9 +30,11 @@ def main() -> None:
     if not token:
         logging.error("Токен бота не найден в переменных окружения")
         return
+    
+    chat_id = int(os.getenv("DEVELOPER_CHAT_ID") or "0")
 
     try:
-        bot = TelegramBot(token)
+        bot = TelegramBot(token, chat_id)
         bot.run()
     except Exception as e:
         logging.exception(f"Произошла ошибка при запуске бота: {e}")
