@@ -76,15 +76,18 @@ class ScheduleFormatter:
     def _format_lesson(self, lesson: Lesson) -> str:
         """Форматирует информацию о занятии"""
 
-        lesson_sub_groups: set[str] = set()
+        lesson_subgroups: set[str] = set()
         for group in lesson.subject.groups:
             if group.sub_group:
-                lesson_sub_groups.update(get_sub(group.sub_group)) 
+                lesson_subgroups.update(get_sub(group.sub_group))
+
+        lesson_subgroups_str = ''.join(lesson_subgroups)
+        subject_title = escape_markdown(f"{lesson.subject.type} {lesson.subject.title}", version=2)
 
         # Формируем строки занятия
         lines = [
             f"{self._num_to_emoji(lesson.number)}🕑 {escape_markdown(lesson.time_start, version=2)} \\- {escape_markdown(lesson.time_end, version=2)}",
-            f"📚 {''.join(lesson_sub_groups)}{escape_markdown(f"{lesson.subject.type} {lesson.subject.title}", version=2) }",
+            f"📚 {lesson_subgroups_str}{subject_title}",
         ]
         
         # Для преподавателей показываем группы
