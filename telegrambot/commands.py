@@ -13,20 +13,13 @@ from telegram.ext import (
     filters,
 )
 import asu
-from asu import Schedule, Lecturer
-from asu.schedule import ScheduleRequest  # Перемещаем ScheduleRequest в schedule.py
+from asu import Group, Lecturer
+from utils.daterange import DateRange
 
 END = ConversationHandler.END
 GET_GROUP_NAME, SHOW_SCHEDULE, SAVE_GROUP, GET_LECTURER_NAME, SHOW_LECTURER_SCHEDULE, SAVE_LECTURER, CHOOSE_SCHEDULE_TYPE = range(7)
 
 SELECTED_SCHEDULE = 'schedule'
-
-def get_next_weekday(d, weekday):
-    # Функция для получения следующего заданного дня недели
-    days_ahead = weekday - d.weekday()
-    if days_ahead <= 0:  # Target day already happened this week
-        days_ahead += 7
-    return d + timedelta(days=days_ahead)
 
 async def start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Обработчик команды /start
@@ -144,38 +137,36 @@ async def handle_show_schedule(update: Update, context: ContextTypes.DEFAULT_TYP
 
     today = datetime.now()
     
-    if query.data == 'T':
-        target_time = ScheduleRequest(today)
-    elif query.data == 'M':
-        target_time = ScheduleRequest(today + timedelta(days=1))
-    elif query.data == 'W':
+    if query.data == 'T': # Today
+        target_date = DateRange(today)
+    elif query.data == 'M': # Tomorrow
+        target_date = DateRange(today + timedelta(days=1))
+    elif query.data == 'W': # This Week
         week_start = today - timedelta(days=today.weekday())
-        target_time = ScheduleRequest(week_start, is_week_request=True)
-    else:  # NW
-        next_week = today + timedelta(days=7-today.weekday())
-        target_time = ScheduleRequest(next_week, is_week_request=True)
+        week_end = week_start + timedelta(days=6)
+        target_date = DateRange(week_start, week_end)
+    else:  # Next Week
+        next_week_start = today + timedelta(days=7-today.weekday())
+        next_week_end = next_week_start + timedelta(days=6)
+        target_date = DateRange(next_week_start, next_week_end)
 
-    selected_schedule = context.user_data[SELECTED_SCHEDULE]
+    selected_schedule: Union[Lecturer, Group] = context.user_data[SELECTED_SCHEDULE] # type: ignore
     is_lecturer = isinstance(selected_schedule, Lecturer)  # Определяем тип расписания
 
-    try:
-        timetable_data = await asu.get_timetable(selected_schedule, target_time)
-        formatted_timetable = asu.format_schedule(
-            timetable_data,
-            selected_schedule.get_schedule_url(print_mode=False),
-            selected_schedule.name,
-            target_time,
-            is_lecturer=is_lecturer  # Передаем флаг is_lecturer
-        )
-        await query.edit_message_text(formatted_timetable, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
-    except Exception as e:
-        logging.error(f"Ошибка при получении расписания: {e}")
-        error_message = f"Произошла ошибка при получении расписания\\. Пожалуйста, попробуйте позже\\."
-        await query.edit_message_text(error_message)
+    timetable = await asu.get_timetable(selected_schedule, target_date)
+    formatted_timetable = asu.format_schedule(
+        timetable,
+        selected_schedule.get_schedule_url(),
+        selected_schedule.name,
+        target_date,
+        is_lecturer  # Передаем флаг is_lecturer
+    )
+
+    await query.edit_message_text(formatted_timetable, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
 
     return END
 
-async def find_schedule_of_group(group_name: str) -> Optional[Schedule]:
+async def find_schedule_of_group(group_name: str) -> Optional[Group]:
     # оск расписания для заданной группы
     return await asu.find_schedule_url(group_name)
 
@@ -270,7 +261,7 @@ async def show_lecturer_schedule_options(update: Update, context: ContextTypes.D
         [InlineKeyboardButton("Завтра", callback_data="M")],
         [InlineKeyboardButton("На эту неделю", callback_data="W")],
         [InlineKeyboardButton("На следующую неделю", callback_data="NW")],
-        [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]  # Добавляем кнопку отмены
+        [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 

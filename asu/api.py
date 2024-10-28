@@ -2,36 +2,58 @@ import os
 import httpx
 import asyncio
 import logging
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Union, TypeVar, Any
-from functools import lru_cache
-from .schedule import Schedule, Lecturer, ScheduleRequest  # Добавляем импорт ScheduleRequest
+from datetime import date, datetime
+from typing import Optional, Union
 
-# Типизация для улучшения читаемости
-ScheduleType = TypeVar('ScheduleType', Schedule, Lecturer)
-DateType = Union[datetime, 'ScheduleRequest']
+from .timetable import Lesson, Room, Subject, TimeTable
+from .group import Group
+from .lecturer import Lecturer
+from utils.daterange import DateRange
+from utils.latin_to_ru import convert_to_russian
+
+ScheduleType = Union[Group, Lecturer]
+
+logger: logging.Logger = logging.getLogger(__name__)
 
 class APIClient:
-    def __init__(self, token: str):
+    def __init__(self, token: str) -> None:
         if not token:
             raise ValueError("API token is required")
         self.token = token
         self.client = httpx.AsyncClient(timeout=30.0)
         self.base_url = "https://www.asu.ru/timetable"
+
+        # lookup dict to get faculty id from code name
+        # Example: СПО - 15
+        self.faculties: dict[str, str] = dict()
         
-    async def close(self):
-        await self.client.aclose()
-        
+    async def create_list_of_faculty_if_empty(self) -> None:
+        if self.faculties:
+            return
+
+        faculties = await self._make_request(self._build_url("students"), self._build_params())
+        records: dict = faculties.get("faculties", {}).get("records", {})
+
+        for record in records:
+            code = record.get("facultyCode")
+            id = record.get("facultyId")
+
+            if code and id:
+                self.faculties[code] = id
+
+        if len(self.faculties) == 0:
+            raise ValueError("Failed to get faculties.")
+    
     def _build_url(self, endpoint: str) -> str:
         return f"{self.base_url}/{endpoint}"
     
-    def _build_params(self, extra_params: Dict[str, str] = None) -> Dict[str, str]:
-        params = {'file': 'list.json', 'api_token': self.token}
+    def _build_params(self, extra_params: Optional[dict[str, str]] = None) -> dict[str, str]:
+        params: dict[str, str] = {'file': 'list.json', 'api_token': self.token}
         if extra_params:
             params.update(extra_params)
         return params
-        
-    async def _make_request(self, url: str, params: Dict[str, str]) -> Dict:
+    
+    async def _make_request(self, url: str, params: dict[str, str]) -> dict:
         try:
             await asyncio.sleep(2)  # Rate limiting
             response = await self.client.get(url, params=params, follow_redirects=True)
@@ -41,7 +63,7 @@ class APIClient:
             logging.error(f"API request failed: {str(e)}")
             raise
 
-    async def search_group(self, query: str) -> Optional[Schedule]:
+    async def search_group(self, query: str) -> Optional[Group]:
         if not query.strip():
             return None
             
@@ -57,7 +79,7 @@ class APIClient:
                 
             record = groups[0]
             faculty_id = record["path"].split("/")[0]
-            return Schedule(record["groupCode"], faculty_id, record["groupId"])
+            return Group(record["groupCode"], faculty_id, record["groupId"])
         except Exception as e:
             logging.error(f"Failed to search group: {str(e)}")
             return None
@@ -89,139 +111,151 @@ class APIClient:
                 lecturer_id=path_parts[2]
             )
         except Exception as e:
-            logging.error(f"Failed to search lecturer: {str(e)}")
+            logger.error(f"Failed to search lecturer: {str(e)}")
             return None
 
-    async def get_schedule(self, schedule: ScheduleType, target_date: Optional[DateType] = None) -> Dict:
-        if not schedule:
-            return {"days": []}
-            
-        url = schedule.get_schedule_url()
-        params = self._build_params()
+    async def get_schedule(self, schedule: ScheduleType, target_date: DateRange) -> TimeTable:
+        # initialize dict lookup
+        await self.create_list_of_faculty_if_empty()
         
-        if target_date:
-            params['date'] = self._format_date_param(target_date)
+        url: str = schedule.get_schedule_url()
+        params: dict[str, str] = self._build_params()
+        
+        params['date'] = self._format_date_param(target_date)
             
         try:
-            data = await self._make_request(url, params)
-            logging.debug(f"Получены данные расписания: {data}")
+            data: dict = await self._make_request(url, params)
+
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Получены данные расписания: {data}")
             
             is_lecturer = isinstance(schedule, Lecturer)
-            logging.debug(f"Тип расписания: {'преподаватель' if is_lecturer else 'группа'}")
+            logger.debug("Тип расписания: %s", 'преподаватель' if is_lecturer else 'группа')
             
-            schedule_data = data.get("schedule", {})
-            records = schedule_data.get("records", [])
-            logging.info(f"Найдено {len(records)} записей в расписании")
-            logging.debug(f"Записи расписания: {records}")
+            schedule_data: dict = data.get("schedule", {})
+            records: list = schedule_data.get("records", [])
+            logger.info("Найдено %d записей в расписании", len(records))
+
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Записи расписания: {}".format(records))
             
             if not records:
-                logging.warning("Расписание пустое")
-                return {"days": []}
+                logger.warning("Расписание пустое")
+                return TimeTable({})
                 
-            processed_data = self._process_schedule_data(records, target_date, is_lecturer)
-            logging.info(f"Обработано дней: {len(processed_data['days'])}")
-            logging.debug(f"Обработанные данные: {processed_data}")
-            return processed_data
+            time_table = self._process_schedule_data(records, target_date, is_lecturer)
+            logger.info("Обработано дней: %d", len(time_table.days))
+
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Обработанные данные: {}".format(time_table))
+
+            return time_table
         except Exception as e:
             logging.error(f"Failed to get schedule: {str(e)}")
-            return {"days": []}
+            return TimeTable({})
 
     @staticmethod
-    def _format_date_param(target_date: DateType) -> str:
-        if hasattr(target_date, 'is_week_request') and target_date.is_week_request:
-            start_date = target_date.date - timedelta(days=target_date.date.weekday())
-            end_date = start_date + timedelta(days=6)
-            return f"{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}"
-        else:
-            target_day = target_date.date if hasattr(target_date, 'date') else target_date
-            return target_day.strftime('%Y%m%d')
+    def _format_date_param(target_date: DateRange) -> str:
+        if target_date.end_date is None:
+            return target_date.start_date.strftime('%Y%m%d')
 
-    @staticmethod
-    def _process_schedule_data(records: List[Dict], target_date: Optional[DateType], is_lecturer: bool = False) -> Dict:
-        days_dict = {}
+        return target_date.start_date.strftime('%Y%m%d') + "-" + target_date.end_date.strftime('%Y%m%d')
+
+    def _process_schedule_data(self, records: list[dict], target_date: DateRange, is_lecturer: bool = False) -> TimeTable:
+        days_dict: dict[date, list[Lesson]] = {}
         
         for record in records:
-            date = record.get("lessonDate")
-            if not date:
+            lesson_date: str = record.get("lessonDate") or ""
+            if not lesson_date:
                 continue
-                
-            formatted_date = f"{date[:4]}-{date[4:6]}-{date[6:]}"
             
-            if target_date and not hasattr(target_date, 'is_week_request'):
-                target_day = target_date.date if hasattr(target_date, 'date') else target_date
-                if date != target_day.strftime('%Y%m%d'):
-                    continue
+            # format YYYYMMDD
+            formatted_date: date = datetime.strptime(lesson_date, "%Y%m%d").date()
+            
+            if not target_date.is_date_in_range(formatted_date):
+                continue
 
             if formatted_date not in days_dict:
                 days_dict[formatted_date] = []
 
-            # Убираем проверку lecturerId, так как она некорректна
-            lesson = APIClient._format_lesson(record, is_lecturer)
+            lesson = self._format_lesson(record)
             days_dict[formatted_date].append(lesson)
 
         # Сортируем дни и занятия
-        days = [
-            {"date": date, "lessons": sorted(lessons, key=lambda x: int(x.get("number", "0")))}
-            for date, lessons in sorted(days_dict.items())
-            if lessons  # Добавляем только дни с занятиями
-        ]
         
-        logging.debug(f"Обработанные дни: {days}")
-        return {"days": days}
+        for d, day in days_dict.items():
+            days_dict[d] = sorted(day, key=lambda l: int(l.number))
 
-    @staticmethod
-    def _format_lesson(record: Dict, is_lecturer: bool = False) -> Dict:
-        lesson = {
-            "number": record.get("lessonNum", ""),
-            "timeStart": record.get("lessonTimeStart", ""),
-            "timeEnd": record.get("lessonTimeEnd", ""),
-            "subject": {"title": record.get("lessonSubject", {}).get("subjectTitle", "")},
-        }
+        return TimeTable(days_dict)
+    
+    def _get_subject(self, record: dict) -> Subject:
+        groups: list[Group] = []
 
-        # Для преподавателей добавляем группы вместо преподавателя
-        if is_lecturer:
-            groups = record.get("lessonGroups", [])
-            group_names = [g.get("lessonGroup", {}).get("groupCode", "") for g in groups if g.get("lessonGroup")]
-            lesson["groups"] = {"title": ", ".join(filter(None, group_names))}
-        else:
-            lecturer = record.get("lessonLecturers", [{}])[0]
-            lesson["teacher"] = {"title": lecturer.get("lecturerName", "")}
+        group_record: dict
+        for group_record in record.get("lessonGroups", []):
+            lesson_group_record = group_record.get("lessonGroup", {})
 
-        # Добавляем информацию об аудитории
-        room_title = record.get('lessonRoom', {}).get('roomTitle', '')
-        building_code = record.get('lessonBuilding', {}).get('buildingCode', '')
-        if room_title or building_code:
-            classroom = f"{room_title} {building_code}".strip()
-            if classroom:  # Добавляем только если не пустая строка
-                lesson["classroom"] = {"title": classroom}
+            group_name = lesson_group_record.get("groupCode", "")
+            faculty_code = lesson_group_record.get("groupFacultyCode", "")
+            group_id = lesson_group_record.get("groupId", "")
 
-        # Добавляем комментарий, если есть
-        if commentary := record.get("lessonCommentary"):
-            lesson["commentary"] = commentary
+            faculty_id = self.faculties.get(faculty_code, "")
+            sub_group = group_record.get("lessonSubGroup", None)
 
+            group = Group(group_name, faculty_id, group_id,sub_group)
+            groups.append(group)
+
+        lecturers: list[Lecturer] = []
+
+        for lecturer_record in record.get("lessonLecturers", []):
+            name = lecturer_record.get("lecturerName", "")
+            chair_id = lecturer_record.get("lecturerIdChair", "")
+            lecturer_id = lecturer_record.get("lecturerId", "")
+            lecturer_faculty_code = lecturer_record.get("lecturerChairFacultyCode", "")
+
+            faculty_id = self.faculties.get(lecturer_faculty_code, "")
+
+            lecturer = Lecturer(name, faculty_id, chair_id, lecturer_id)
+            lecturers.append(lecturer)
+
+        building = record.get("lessonBuilding", {})
+        address = building.get("buildingAddress", "")
+        address_code = building.get("buildingCode", "")
+
+        if isinstance(address_code, str) and address_code == '`':
+            # address code can only be that symbol, if it was then clean the result
+            address_code = ""
+
+        lesson_room = record.get("lessonRoom", {}).get("roomTitle", "") or ""
+
+        room = Room(address, address_code, lesson_room)
+
+        subject_title = record.get("lessonSubject", {}).get("subjectTitle", "")
+        subject_type = record.get("lessonSubjectType", "")
+        subject_comment = record.get("lessonCommentary")
+
+        return Subject(subject_title, subject_type, subject_comment, groups, lecturers, room)
+
+    def _format_lesson(self, record: dict) -> Lesson:
+
+        number = record.get("lessonNum", "")
+        time_start = record.get("lessonTimeStart", "")
+        time_end = record.get("lessonTimeEnd", "")
+
+        subject = self._get_subject(record)
+        lesson = Lesson(number, time_start, time_end, subject)
+        
         return lesson
-
-@lru_cache(maxsize=1000)
-def convert_to_russian(text: str) -> str:
-    """Кэшированная функция конвертации латиницы в кириллицу"""
-    conversion_map = {
-        'a': 'а', 'b': 'в', 'c': 'с', 'd': 'д', 'e': 'е', 'f': 'ф',
-        'g': 'г', 'h': 'х', 'i': 'и', 'j': 'й', 'k': 'к', 'l': 'л',
-        'm': 'м', 'n': 'н', 'o': 'о', 'p': 'р', 'q': 'к', 'r': 'р',
-        's': 'с', 't': 'т', 'u': 'у', 'v': 'в', 'w': 'в', 'x': 'х',
-        'y': 'у', 'z': 'з'
-    }
-    return ''.join(conversion_map.get(char.lower(), char) for char in text)
 
 # Создаем глобальный экземпляр клиента
 api_client = APIClient(os.getenv('ASU', ''))
 
 # Экспортируем функции для обратной совместимости
-async def find_schedule_url(group_name: str) -> Optional[Schedule]:
+async def find_schedule_url(group_name: str) -> Optional[Group]:
     return await api_client.search_group(group_name)
 
 async def find_lecturer_schedule(lecturer_name: str) -> Optional[Lecturer]:
     return await api_client.search_lecturer(lecturer_name)
 
-async def get_timetable(schedule: ScheduleType, target_date: Optional[DateType] = None) -> Dict:
+async def get_timetable(schedule: ScheduleType, target_date: DateRange) -> TimeTable:
     return await api_client.get_schedule(schedule, target_date)
