@@ -18,9 +18,8 @@ def setup_logging() -> None:
         ]
     )
 
-    # Уменьшаем уровень логирования для некоторых модулей
+    # remove verbose logs from httpx
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("telegram").setLevel(logging.WARNING)
 
 def main() -> None:
     load_dotenv()
@@ -38,6 +37,7 @@ def main() -> None:
         bot.run()
     except Exception as e:
         logging.exception(f"Произошла ошибка при запуске бота: {e}")
+        raise e
 
 if __name__ == '__main__':
     main()
