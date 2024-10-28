@@ -113,7 +113,8 @@ class ScheduleFormatter:
             lines.append(f"👩 {escape_markdown(' '.join(lecturers), version=2)}")
 
         # Добавляем аудиторию
-        lines.append(f"🏢 {escape_markdown(f"{lesson.subject.room.number} {lesson.subject.room.address_code}", version=2)}")
+        room = escape_markdown(f"{lesson.subject.room.number} {lesson.subject.room.address_code}", version=2)
+        lines.append(f"🏢 {room}")
 
         # Добавляем комментарий
         if lesson.subject.comment:
