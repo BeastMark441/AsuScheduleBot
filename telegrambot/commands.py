@@ -51,7 +51,7 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text("Введите название группы:")
         return GET_GROUP_NAME
     
-    group_name = ' '.join(context.args)
+    group_name = ''.join(context.args)
     return await handle_schedule(update, context, group_name)
 
 async def get_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -87,8 +87,7 @@ async def ask_to_save_group(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
         f"Хотите ли вы сохранить группу {group_name} для быстрого доступа в будущем?",
-        reply_markup=reply_markup
-    )
+        reply_markup=reply_markup)
     return SAVE_GROUP
 
 async def save_group_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -122,16 +121,9 @@ async def show_schedule_options(update: Update, context: ContextTypes.DEFAULT_TY
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     schedule = context.user_data[SELECTED_SCHEDULE]
-    if isinstance(update.effective_message, telegram.Message):
-        await update.effective_message.reply_text(
+    await update.message.reply_text(
             f"📚 Группа {schedule.name}\nВыберите, на какой день хотите получить расписание:",
-            reply_markup=reply_markup
-        )
-    else:
-        await update.callback_query.message.reply_text(
-            f"📚 Группа {schedule.name}\nВыберите, на какой день хотите получить расписание:",
-            reply_markup=reply_markup
-        )
+            reply_markup=reply_markup)
     
     return SHOW_SCHEDULE
 
@@ -178,7 +170,7 @@ async def handle_show_schedule(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(formatted_timetable, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
     except Exception as e:
         logging.error(f"Ошибка при получении расписания: {e}")
-        error_message = f"Произошла ошибка при получении расписания: {str(e)}\\. Пожалуйста, попробуйте позже\\."
+        error_message = f"Произошла ошибка при получении расписания\\. Пожалуйста, попробуйте позже\\."
         await query.edit_message_text(error_message)
 
     return END
@@ -283,16 +275,9 @@ async def show_lecturer_schedule_options(update: Update, context: ContextTypes.D
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     lecturer = context.user_data[SELECTED_SCHEDULE]
-    if isinstance(update.effective_message, telegram.Message):
-        await update.effective_message.reply_text(
+    await update.message.reply_text(
             f"👩‍🏫 Преподаватель: {lecturer.name}\nВыберите период расписания:",
-            reply_markup=reply_markup
-        )
-    else:
-        await update.callback_query.message.reply_text(
-            f"👩‍🏫 Преподаватель: {lecturer.name}\nВыберите период расписания:",
-            reply_markup=reply_markup
-        )
+            reply_markup=reply_markup)
     
     return SHOW_LECTURER_SCHEDULE
 
@@ -305,7 +290,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     if isinstance(update.callback_query, telegram.CallbackQuery):
-        await update.callback_query.message.edit_text(
+        await update.callback_query.edit_message_text(
             "Выберите тип расписания:",
             reply_markup=reply_markup
         )
@@ -339,7 +324,6 @@ async def cancel_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 schedule_handler = ConversationHandler(
     entry_points=[
         CommandHandler("schedule", schedule_callback),
-        CommandHandler("shcedule", schedule_callback),
     ],
     states={
         GET_GROUP_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_group_name)],
