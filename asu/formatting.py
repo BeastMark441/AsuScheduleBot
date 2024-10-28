@@ -2,110 +2,151 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Union
 from telegram.helpers import escape_markdown
 import logging
+from .schedule import ScheduleRequest  # Добавляем импорт ScheduleRequest
 
-def format_schedule(timetable_data: Dict, schedule_link: str, group_name: str, target_date: Optional[Union[datetime, 'ScheduleRequest']] = None) -> str:
-    logging.info(f"Форматирование расписания для группы {group_name}. Данные: {timetable_data}")
+class ScheduleFormatter:
+    """Класс для форматирования расписания"""
     
-    # Формируем заголовок расписания
-    formatted_schedule = [f"📚 Расписание для группы: {escape_markdown(group_name, version=2)}\n"]
-    
-    days = timetable_data.get("days", [])
-    if not days:
-        logging.warning(f"Нет данных о днях в расписании для группы {group_name}")
-        formatted_schedule.append("На указанный период занятий не найдено\\.")
-    else:
+    def __init__(self, is_lecturer: bool = False):
+        self.is_lecturer = is_lecturer
+        self.emoji_numbers = ("0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣")
+        self.weekdays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+
+    def format_schedule(self, timetable_data: Dict, schedule_link: str, name: str, 
+                       target_date: Optional[Union[datetime, 'ScheduleRequest']] = None) -> str:
+        """Форматирует расписание в текстовый вид"""
+        logging.info(f"Форматирование расписания для {'преподавателя' if self.is_lecturer else 'группы'} {name}")
+        
+        # Формируем заголовок
+        header_emoji = "👩‍🏫" if self.is_lecturer else "📚"
+        header_text = "преподавателя" if self.is_lecturer else "группы"
+        formatted_schedule = [f"{header_emoji} Расписание {header_text}: {escape_markdown(name, version=2)}\n"]
+        
+        days = timetable_data.get("days", [])
+        if not days:
+            formatted_schedule.append("На указанный период занятий не найдено\\.")
+            return self._add_schedule_link(formatted_schedule, schedule_link)
+        
         # Определяем период для фильтрации
-        if target_date:
-            if hasattr(target_date, 'is_week_request') and target_date.is_week_request:
-                # Для недельного запроса используем всю неделю
-                start_of_week = target_date.date - timedelta(days=target_date.date.weekday())
-                end_of_week = start_of_week + timedelta(days=6)
-                logging.info(f"Фильтруем по периоду недели: {start_of_week} - {end_of_week}")
-            else:
-                # Для конкретного дня используем только этот день
-                if hasattr(target_date, 'date'):
-                    start_of_week = end_of_week = target_date.date
-                else:
-                    start_of_week = end_of_week = target_date
-                logging.info(f"Фильтруем по конкретной дате: {start_of_week}")
-        else:
-            # Если дата не указана, показываем все дни
-            start_of_week = end_of_week = None
-            logging.info("Дата не указана, показываем все дни")
-        
-        found_lessons = False
-        # Сортируем дни по дате
-        sorted_days = sorted(days, key=lambda x: x["date"])
-        
-        for day in sorted_days:
-            date = datetime.strptime(day["date"], "%Y-%m-%d")
+        date_range = self._get_date_range(target_date)
+        if not date_range:
+            return self._add_schedule_link(formatted_schedule, schedule_link)
             
-            # Проверяем, попадает ли день в указанный период
-            if start_of_week and end_of_week:
-                if isinstance(start_of_week, datetime):
-                    start_date = start_of_week.date()
-                    end_date = end_of_week.date()
-                else:
-                    start_date = start_of_week
-                    end_date = end_of_week
-                
-                if not (start_date <= date.date() <= end_date):
-                    logging.debug(f"Пропускаем день {date.date()}, не входит в период {start_date} - {end_date}")
-                    continue
-            
-            found_lessons = True
-            formatted_date = date.strftime('%d\\.%m')
-            formatted_schedule.append(f"📅 {get_weekday(date.weekday())} {formatted_date}\n")
-            
-            lessons = day.get("lessons", [])
-            if not lessons:
-                formatted_schedule.append("Нет занятий\n")
-            else:
-                # Сортируем занятия по номеру пары
-                sorted_lessons = sorted(lessons, key=lambda x: int(x.get("number", "0")))
-                for lesson in sorted_lessons:
-                    formatted_lesson = format_lesson(lesson)
-                    formatted_schedule.append(formatted_lesson)
-                formatted_schedule.append("")
+        # Форматируем дни
+        found_lessons = self._format_days(days, date_range, formatted_schedule)
         
         if not found_lessons:
-            logging.warning(f"Не найдено занятий в указанный период для группы {group_name}")
             formatted_schedule.append("На указанный период занятий не найдено\\.")
-    
-    # Добавляем ссылку на полное расписание
-    escaped_link = schedule_link.replace(".", "\\.")
-    formatted_schedule.append(f"🚀 [Ссылка на расписание]({escaped_link})")
-    
-    result = "\n".join(formatted_schedule)
-    logging.info(f"Сформированное расписание: {result}")
-    return result
+            
+        return self._add_schedule_link(formatted_schedule, schedule_link)
 
-def format_lesson(lesson: Dict) -> str:
-    # Извлекаем и форматируем данные о занятии
-    number = lesson.get("number", "")
-    time_start = lesson.get("timeStart", "").replace(":", "\\:")
-    time_end = lesson.get("timeEnd", "").replace(":", "\\:")
-    subject = escape_markdown(lesson.get("subject", {}).get("title", "Предмет не указан"), version=2)
-    teacher = escape_markdown(lesson.get("teacher", {}).get("title", "Преподаватель не указан"), version=2)
-    classroom = escape_markdown(lesson.get("classroom", {}).get("title", "Аудитория не указана"), version=2)
-    
-    # Формируем строку с информацией о занятии
-    formatted_lesson = (
-        f"{num_to_emoji(number)}🕑 {time_start} \\- {time_end}\n"
-        f"📚 {subject}\n"
-        f"👩 {teacher}\n"
-        f"🏢 {classroom}\n"
-    )
-    return formatted_lesson
+    def _get_date_range(self, target_date: Optional[Union[datetime, 'ScheduleRequest']]) -> Optional[tuple]:
+        """Определяет диапазон дат для фильтрации"""
+        if not target_date:
+            return None
+            
+        if hasattr(target_date, 'is_week_request') and target_date.is_week_request:
+            start_date = target_date.date - timedelta(days=target_date.date.weekday())
+            end_date = start_date + timedelta(days=6)
+            logging.info(f"Фильтруем по периоду недели: {start_date} - {end_date}")
+        else:
+            start_date = end_date = target_date.date if hasattr(target_date, 'date') else target_date
+            logging.info(f"Фильтруем по конкретной дате: {start_date}")
+            
+        return start_date, end_date
 
-def get_weekday(weekday: int) -> str:
-    # Возвращаем название дня недели по его номеру
-    weekdays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
-    return weekdays[weekday]
+    def _format_days(self, days: List[Dict], date_range: tuple, formatted_schedule: List[str]) -> bool:
+        """Форматирует дни расписания"""
+        found_lessons = False
+        start_date, end_date = date_range
+        
+        for day in sorted(days, key=lambda x: x["date"]):
+            date = datetime.strptime(day["date"], "%Y-%m-%d")
+            
+            if not self._is_date_in_range(date, start_date, end_date):
+                continue
+                
+            found_lessons = True
+            self._format_single_day(day, date, formatted_schedule)
+            
+        return found_lessons
 
-def num_to_emoji(num: str) -> str:
-    # Конвертируем числовой номер пары в эмодзи
-    emoji_numbers = ("0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣")
-    if num.isdigit() and int(num) < len(emoji_numbers):
-        return emoji_numbers[int(num)]
-    return "❓"
+    def _is_date_in_range(self, date: datetime, start_date: datetime, end_date: datetime) -> bool:
+        """Проверяет, входит ли дата в указанный диапазон"""
+        if isinstance(start_date, datetime):
+            return start_date.date() <= date.date() <= end_date.date()
+        return start_date <= date.date() <= end_date
+
+    def _format_single_day(self, day: Dict, date: datetime, formatted_schedule: List[str]) -> None:
+        """Форматирует один день расписания"""
+        formatted_date = date.strftime('%d\\.%m')
+        formatted_schedule.append(f"📅 {self.weekdays[date.weekday()]} {formatted_date}\n")
+        
+        lessons = day.get("lessons", [])
+        if not lessons:
+            formatted_schedule.append("Нет занятий\n")
+            return
+            
+        for lesson in sorted(lessons, key=lambda x: int(x.get("number", "0"))):
+            formatted_schedule.append(self._format_lesson(lesson))
+        formatted_schedule.append("")
+
+    def _format_lesson(self, lesson: Dict) -> str:
+        """Форматирует информацию о занятии"""
+        number = lesson.get("number", "")
+        time_start = lesson.get("timeStart", "").replace(":", "\\:")
+        time_end = lesson.get("timeEnd", "").replace(":", "\\:")
+        subject = escape_markdown(lesson.get("subject", {}).get("title", ""), version=2)
+        
+        # Формируем строки занятия
+        lines = [
+            f"{self._num_to_emoji(number)}🕑 {time_start} \\- {time_end}",
+            f"📚 {subject}",
+        ]
+        
+        # Для преподавателей показываем группы
+        if self.is_lecturer:
+            groups = escape_markdown(lesson.get("groups", {}).get("title", ""), version=2)
+            if groups:
+                lines.append(f"👥 Группы: {groups}")
+        else:
+            # Для групп показываем преподавателя
+            teacher = escape_markdown(lesson.get("teacher", {}).get("title", ""), version=2)
+            if teacher:
+                lines.append(f"👩 {teacher}")
+        
+        # Добавляем аудиторию
+        room = lesson.get("classroom", {}).get("title", "").strip()
+        room = room.replace('None', '').replace('`', '').strip()
+        if room:
+            classroom = escape_markdown(room, version=2)
+            lines.append(f"🏢 {classroom}")
+            
+        # Добавляем комментарий
+        if "commentary" in lesson:
+            lines.append(f"💬 {escape_markdown(lesson['commentary'], version=2)}")
+            
+        return "\n".join(lines) + "\n"
+
+    def _num_to_emoji(self, num: str) -> str:
+        """Конвертирует числовой номер пары в эмодзи"""
+        if num.isdigit() and int(num) < len(self.emoji_numbers):
+            return self.emoji_numbers[int(num)]
+        return "❓"
+
+    def _add_schedule_link(self, formatted_schedule: List[str], schedule_link: str) -> str:
+        """Добавляет ссылку на расписание и объединяет все строки"""
+        escaped_link = schedule_link.replace(".", "\\.")
+        formatted_schedule.append(f"🚀 [Ссылка на расписание]({escaped_link})")
+        return "\n".join(formatted_schedule)
+
+# Создаем форматтеры для разных типов расписаний
+group_formatter = ScheduleFormatter(is_lecturer=False)
+lecturer_formatter = ScheduleFormatter(is_lecturer=True)
+
+def format_schedule(timetable_data: Dict, schedule_link: str, name: str, 
+                   target_date: Optional[Union[datetime, 'ScheduleRequest']] = None,
+                   is_lecturer: bool = False) -> str:
+    """Функция-обертка для обратной совместимости"""
+    formatter = lecturer_formatter if is_lecturer else group_formatter
+    return formatter.format_schedule(timetable_data, schedule_link, name, target_date)
