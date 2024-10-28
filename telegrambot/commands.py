@@ -275,7 +275,7 @@ async def show_lecturer_schedule_options(update: Update, context: ContextTypes.D
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     lecturer = context.user_data[SELECTED_SCHEDULE]
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
             f"👩‍🏫 Преподаватель: {lecturer.name}\nВыберите период расписания:",
             reply_markup=reply_markup)
     
@@ -289,16 +289,9 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    if isinstance(update.callback_query, telegram.CallbackQuery):
-        await update.callback_query.edit_message_text(
+    await update.effective_message.edit_text(
             "Выберите тип расписания:",
-            reply_markup=reply_markup
-        )
-    else:
-        await update.message.reply_text(
-            "Выберите тип расписания:",
-            reply_markup=reply_markup
-        )
+            reply_markup=reply_markup)
     return CHOOSE_SCHEDULE_TYPE
 
 async def handle_schedule_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
