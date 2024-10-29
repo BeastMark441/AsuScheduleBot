@@ -90,27 +90,12 @@ class ScheduleFormatter:
             f"📚 {lesson_subgroups_str}{subject_title}",
         ]
         
-        # Для преподавателей показываем группы
         if self.is_lecturer:
-            groups: set[str] = set()
-
-            for group in lesson.subject.groups:
-                groups.update(group.name)
-
-            if not groups:
-                groups.update("❓")
-
+            groups: set[str] = set([group.name for group in lesson.subject.groups]) or {"❓"}
             lines.append(f"👥 Группы: {escape_markdown(' '.join(groups), version=2)}")
         else:
-            lecturers: set[str] = set()
-
-            for lecturer in lesson.subject.lecturers:
-                lecturers.update(lecturer.name)
-
-            if not lecturer:
-                lecturer = "❓"
-            
-            lines.append(f"👩 {escape_markdown(' '.join(lecturers), version=2)}")
+            lecturers: set[str] = set([lecturer.name for lecturer in lesson.subject.lecturers]) or {"❓"}
+            lines.append(f"👩 Преподаватель: {escape_markdown(' '.join(lecturers), version=2)}")
 
         # Добавляем аудиторию
         room = escape_markdown(f"{lesson.subject.room.number} {lesson.subject.room.address_code}", version=2)
