@@ -212,10 +212,11 @@ class APIClient:
             chair_id = lecturer_record.get("lecturerIdChair", "")
             lecturer_id = lecturer_record.get("lecturerId", "")
             lecturer_faculty_code = lecturer_record.get("lecturerChairFacultyCode", "")
+            lecturer_position = lecturer_record.get("lecturerPosition", "")
 
             faculty_id = self.faculties.get(lecturer_faculty_code, "")
 
-            lecturer = Lecturer(name, faculty_id, chair_id, lecturer_id)
+            lecturer = Lecturer(name, faculty_id, chair_id, lecturer_id, lecturer_position)
             lecturers.append(lecturer)
 
         building = record.get("lessonBuilding", {})

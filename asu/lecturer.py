@@ -8,6 +8,8 @@ class Lecturer:
     faculty_id: str
     chair_id: str
     lecturer_id: str
+    # Position of Lecturer. Examples: асс. преп.
+    position: str
 
     def get_schedule_url(self) -> str:
         """Получить URL для расписания преподавателя"""
