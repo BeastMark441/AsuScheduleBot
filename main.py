@@ -1,5 +1,6 @@
 import os
 import logging
+import logging.handlers
 from sys import stdout
 from dotenv import load_dotenv
 
@@ -8,12 +9,16 @@ from telegrambot import TelegramBot
 def setup_logging() -> None:
     level = logging.DEBUG if os.getenv("DEV") == 'True' else logging.INFO
 
+    os.makedirs("logs", exist_ok=True)
+
+    file_handler = logging.handlers.TimedRotatingFileHandler("logs/latest.log", "D", backupCount=3, encoding="utf-8")
+
     logging.basicConfig(
         level=level,
         format="[%(asctime)s %(levelname)s][%(name)s] %(message)s",
         datefmt='%Y-%m-%d %H:%M:%S',
         handlers=[
-            logging.FileHandler("latest.log", "w", encoding="utf-8"),
+            file_handler,
             logging.StreamHandler(stdout)
         ]
     )
