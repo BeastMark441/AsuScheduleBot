@@ -108,7 +108,8 @@ class APIClient:
                 name=record["lecturerName"],
                 faculty_id=path_parts[0],
                 chair_id=path_parts[1],
-                lecturer_id=path_parts[2]
+                lecturer_id=path_parts[2],
+                position="" # FIXME
             )
         except Exception as e:
             logger.error(f"Failed to search lecturer: {str(e)}")
