@@ -4,11 +4,8 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-requests = "*"
-bs4 = "*"
 python-telegram-bot = "*"
 python-dotenv = "*"
-md2tgmd = "==0.3.1"
 httpx = "*"
 frozenlist = "*"
 
