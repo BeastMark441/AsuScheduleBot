@@ -1,9 +1,9 @@
 import os
+from typing import Any
 import httpx
 import asyncio
 import logging
 from datetime import date, datetime
-from typing import Optional, Union
 
 from .timetable import Lesson, Room, Subject, TimeTable
 from .group import Group
@@ -11,7 +11,7 @@ from .lecturer import Lecturer
 from utils.daterange import DateRange
 from utils.latin_to_ru import convert_to_russian
 
-ScheduleType = Union[Group, Lecturer]
+ScheduleType = Group | Lecturer
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -19,9 +19,9 @@ class APIClient:
     def __init__(self, token: str) -> None:
         if not token:
             raise ValueError("API token is required")
-        self.token = token
-        self.client = httpx.AsyncClient(timeout=30.0)
-        self.base_url = "https://www.asu.ru/timetable"
+        self.token: str = token
+        self.client: httpx.AsyncClient = httpx.AsyncClient(timeout=30.0)
+        self.base_url: str = "https://www.asu.ru/timetable"
 
         # lookup dict to get faculty id from code name
         # Example: СПО - 15
@@ -32,7 +32,7 @@ class APIClient:
             return
 
         faculties = await self._make_request(self._build_url("students"), self._build_params())
-        records: dict = faculties.get("faculties", {}).get("records", {})
+        records: dict[Any, Any] = faculties.get("faculties", {}).get("records", {})
 
         for record in records:
             code = record.get("facultyCode")
@@ -47,13 +47,13 @@ class APIClient:
     def _build_url(self, endpoint: str) -> str:
         return f"{self.base_url}/{endpoint}"
     
-    def _build_params(self, extra_params: Optional[dict[str, str]] = None) -> dict[str, str]:
+    def _build_params(self, extra_params: dict[str, str] | None = None) -> dict[str, str]:
         params: dict[str, str] = {'file': 'list.json', 'api_token': self.token}
         if extra_params:
             params.update(extra_params)
         return params
     
-    async def _make_request(self, url: str, params: dict[str, str]) -> dict:
+    async def _make_request(self, url: str, params: dict[str, str]) -> dict[Any, Any]:
         try:
             await asyncio.sleep(2)  # Rate limiting
             response = await self.client.get(url, params=params, follow_redirects=True)
@@ -63,7 +63,7 @@ class APIClient:
             logging.error(f"API request failed: {str(e)}")
             raise
 
-    async def search_group(self, query: str) -> Optional[Group]:
+    async def search_group(self, query: str) -> Group | None:
         if not query.strip():
             return None
             
@@ -84,7 +84,7 @@ class APIClient:
             logging.error(f"Failed to search group: {str(e)}")
             return None
 
-    async def search_lecturer(self, query: str) -> Optional[Lecturer]:
+    async def search_lecturer(self, query: str) -> Lecturer | None:
         if not query.strip():
             return None
             
@@ -125,7 +125,7 @@ class APIClient:
         params['date'] = self._format_date_param(target_date)
             
         try:
-            data: dict = await self._make_request(url, params)
+            data = await self._make_request(url, params)
 
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"Получены данные расписания: {data}")
@@ -133,8 +133,8 @@ class APIClient:
             is_lecturer = isinstance(schedule, Lecturer)
             logger.debug("Тип расписания: %s", 'преподаватель' if is_lecturer else 'группа')
             
-            schedule_data: dict = data.get("schedule", {})
-            records: list = schedule_data.get("records", [])
+            schedule_data: dict[Any, Any] = data.get("schedule", {})
+            records: list[dict[Any, Any]] = schedule_data.get("records", [])
             logger.info("Найдено %d записей в расписании", len(records))
 
             if logger.isEnabledFor(logging.DEBUG):
@@ -144,7 +144,7 @@ class APIClient:
                 logger.warning("Расписание пустое")
                 return TimeTable({})
                 
-            time_table = self._process_schedule_data(records, target_date, is_lecturer)
+            time_table = self._process_schedule_data(records, target_date)
             logger.info("Обработано дней: %d", len(time_table.days))
 
             if logger.isEnabledFor(logging.DEBUG):
@@ -162,7 +162,7 @@ class APIClient:
 
         return target_date.start_date.strftime('%Y%m%d') + "-" + target_date.end_date.strftime('%Y%m%d')
 
-    def _process_schedule_data(self, records: list[dict], target_date: DateRange, is_lecturer: bool = False) -> TimeTable:
+    def _process_schedule_data(self, records: list[dict[Any, Any]], target_date: DateRange) -> TimeTable:
         days_dict: dict[date, list[Lesson]] = {}
         
         for record in records:
@@ -189,10 +189,10 @@ class APIClient:
 
         return TimeTable(days_dict)
     
-    def _get_subject(self, record: dict) -> Subject:
+    def _get_subject(self, record: dict[Any, Any]) -> Subject:
         groups: list[Group] = []
 
-        group_record: dict
+        group_record: dict[Any, Any]
         for group_record in record.get("lessonGroups", []):
             lesson_group_record = group_record.get("lessonGroup", {})
 
@@ -238,8 +238,7 @@ class APIClient:
 
         return Subject(subject_title, subject_type, subject_comment, groups, lecturers, room)
 
-    def _format_lesson(self, record: dict) -> Lesson:
-
+    def _format_lesson(self, record: dict[Any, Any]) -> Lesson:
         number = record.get("lessonNum", "")
         time_start = record.get("lessonTimeStart", "")
         time_end = record.get("lessonTimeEnd", "")
@@ -253,10 +252,10 @@ class APIClient:
 api_client = APIClient(os.getenv('ASU', ''))
 
 # Экспортируем функции для обратной совместимости
-async def find_schedule_url(group_name: str) -> Optional[Group]:
+async def find_schedule_url(group_name: str) -> Group | None:
     return await api_client.search_group(group_name)
 
-async def find_lecturer_schedule(lecturer_name: str) -> Optional[Lecturer]:
+async def find_lecturer_schedule(lecturer_name: str) -> Lecturer | None:
     return await api_client.search_lecturer(lecturer_name)
 
 async def get_timetable(schedule: ScheduleType, target_date: DateRange) -> TimeTable:

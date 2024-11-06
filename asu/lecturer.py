@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-
+from typing import override
 
 @dataclass
 class Lecturer:
@@ -15,5 +15,6 @@ class Lecturer:
         """Получить URL для расписания преподавателя"""
         return f"https://www.asu.ru/timetable/lecturers/{self.faculty_id}/{self.chair_id}/{self.lecturer_id}/"
 
+    @override
     def __str__(self) -> str:
         return f"Преподаватель {self.name}"

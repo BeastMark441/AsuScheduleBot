@@ -7,27 +7,25 @@ from telegram.constants import ParseMode
 from telegram import Update  # Добавляем импорт Update
 
 from .commands import *
-from .database import Database
-
-DEVELOPER_CHAT_ID: int = 0
 
 class TelegramBot():
+    developer_chat_id: int = 0
+    
     def __init__(self, token: str, dev_chat_id: int):
         if not token:
             raise ValueError("Токен бота не может быть пустым")
-        self.token = token
-        self.db = Database()
-        self.dev_chat_id = dev_chat_id
+        self.token: str = token
+        self.developer_chat_id = dev_chat_id
 
     def run(self):
         application = (
             Application.builder()
             .token(self.token)
+            # Processing updates concurrently is not recommended when stateful handlers like telegram.ext.ConversationHandler are used.
+            # https://docs.python-telegram-bot.org/en/latest/telegram.ext.applicationbuilder.html#telegram.ext.ApplicationBuilder.concurrent_updates
+            .concurrent_updates(False)
             .build()
         )
-
-        # Добавляем базу данных в пользовательские данные приложения
-        application.bot_data['db'] = self.db
 
         # Используем импортированные обработчики вместо их определения здесь
         application.add_handler(schedule_handler)
@@ -36,27 +34,20 @@ class TelegramBot():
         application.add_handler(CommandHandler("cleansavegroup", cleansavegroup_callback))
         application.add_handler(CommandHandler("cleansavelect", cleansavelect_callback))
 
-        if self.dev_chat_id != 0:
-            global DEVELOPER_CHAT_ID
-            DEVELOPER_CHAT_ID = self.dev_chat_id
+        if self.developer_chat_id != 0:
             application.add_error_handler(error_handler)
 
         application.run_polling(allowed_updates=Update.ALL_TYPES)
 
         logging.info("Бот запущен")
 
-    def __del__(self):
-        self.db.close()
-
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    global DEVELOPER_CHAT_ID
-
     # Log the error before we do anything else, so we can see it even if something breaks.
     logging.error("Exception while handling an update:", exc_info=context.error)
 
     # traceback.format_exception returns the usual python message about an exception, but as a
     # list of strings rather than a single string, so we have to join them together.
-    tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
+    tb_list = traceback.format_exception(None, context.error, context.error.__traceback__) # pyright: ignore
     tb_string = "".join(tb_list)
 
     # Build the message with some markup and additional information about what happened.
@@ -72,6 +63,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
     # Finally, send the message
-    await context.bot.send_message(
-        chat_id=DEVELOPER_CHAT_ID, text=message, parse_mode=ParseMode.HTML
+    _ = await context.bot.send_message(
+        chat_id=TelegramBot.developer_chat_id, text=message, parse_mode=ParseMode.HTML
     )

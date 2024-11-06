@@ -1,6 +1,5 @@
 import asyncio
 from datetime import datetime, timedelta
-from typing import Optional, Union
 import telegram
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -14,6 +13,7 @@ from telegram.ext import (
 )
 import asu
 from asu import Group, Lecturer
+from telegrambot.database import Database
 from utils.daterange import DateRange
 
 END = ConversationHandler.END
@@ -21,58 +21,67 @@ GET_GROUP_NAME, SHOW_SCHEDULE, SAVE_GROUP, GET_LECTURER_NAME, SHOW_LECTURER_SCHE
 
 SELECTED_SCHEDULE = 'schedule'
 
+database = Database()
+
 async def start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Обработчик команды /start
-    user = update.effective_user
-    await update.message.reply_html(
+    """Обработчик команды /start"""
+    if ((message := update.message) and (user := message.from_user)):
+        _ = await message.reply_html(
         f"Привет, {user.mention_html()}! Это бот для поиск расписания студентов и преподавателей АлтГУ.\n"
-        "Используй контекстное меню или команды для взаимодействия с ботом.\n"
-        "Если возникли ошибки или есть идеи, напиши нам.\n"
-        "Контакты в описании бота"
-    )
+        + "Используй контекстное меню или команды для взаимодействия с ботом.\n"
+        + "Если возникли ошибки или есть идеи, напиши нам.\n"
+        + "Контакты в описании бота")
 
 async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    # Обработчик команды /schedule
-    user_id = update.effective_user.id
-    db = context.bot_data['db']
-    saved_group = db.get_group(user_id)
-    if saved_group:
-        await update.message.reply_text(f"Используется сохраненная группа: {saved_group}")
-        return await handle_schedule(update, context, saved_group)
+    """Обработчик команды /schedule"""
     
-    if not context.args:
-        await update.message.reply_text("Введите название группы:")
+    if not ((message := update.message) and (user := message.from_user)):
+        return END
+    
+    # If user enters group name after the command, then search for it
+    # If no input, then use saved, otherwise ask user to enter group
+    
+    group_name: str
+    
+    if context.args:
+        group_name = ''.join(context.args)
+    elif (group_name := database.get_group(user.id)): # pyright: ignore
+        _ = await update.message.reply_text(f"Используется сохраненная группа: {group_name}")
+    else:
+        _ = await update.message.reply_text("Введите название группы:")
         return GET_GROUP_NAME
     
-    group_name = ''.join(context.args)
     return await handle_schedule(update, context, group_name)
 
 async def get_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    # Обработчик ввода названия группы
-    group_name = update.message.text
+    """Обработчик ввода названия группы"""
+    
+    if not ((message := update.message) and (group_name := message.text)):
+        return END
+    
     if not group_name:
-        await update.message.reply_text("Пожалуйста, введите корректное название группы.")
+        _ = await message.reply_text("Пожалуйста, введите корректное название группы")
         return GET_GROUP_NAME
+    
     return await handle_schedule(update, context, group_name)
 
 async def handle_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE, group_name: str) -> int:
-    # Основной обработчик запроса расписания
+    """Основной обработчик запроса расписания"""
+    
     schedule = await find_schedule_of_group(group_name)
     if not schedule:
-        await update.message.reply_text("Ошибка получения группы. Пожалуйста, проверьте название и попробуйте снова.")
+        _ = await update.message.reply_text("Ошибка получения группы. Пожалуйста, проверьте название и попробуйте снова")
         return END
     
     context.user_data[SELECTED_SCHEDULE] = schedule
     
-    user_id = update.effective_user.id
-    db = context.bot_data['db']
-    if not db.get_group(user_id):
+    if not database.get_group(update.message.from_user.id):
         return await ask_to_save_group(update, context, schedule.name)
     
     return await show_schedule_options(update, context)
 
 async def ask_to_save_group(update: Update, context: ContextTypes.DEFAULT_TYPE, group_name: str) -> int:
-    # Запрос на сохранение группы
+    """Запрос на сохранение группы"""
     keyboard = [
         [InlineKeyboardButton("Да", callback_data="save_yes"),
          InlineKeyboardButton("Нет", callback_data="save_no")]
@@ -84,26 +93,25 @@ async def ask_to_save_group(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     return SAVE_GROUP
 
 async def save_group_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    # Обработчик ответа на запрос сохранения группы
-    query = update.callback_query
-    await query.answer()
+    """Обработчик ответа на запрос сохранения группы"""
+    if not (query := update.callback_query):
+        return END
+    
+    _ = await query.answer()
 
     if query.data == "save_yes":
         schedule = context.user_data.get(SELECTED_SCHEDULE)
-        if schedule:
+        if isinstance(schedule, Group):
             user_id = update.effective_user.id
-            db = context.bot_data['db']
-            db.save_group(user_id, schedule.name)
-            await query.edit_message_text(f"Группа {schedule.name} сохранена.")
+            database.save_group(user_id, schedule.name)
+            _ = await query.edit_message_text(f"Группа {schedule.name} сохранена.")
         else:
-            await query.edit_message_text("Произошла ошибка при сохранении группы.")
-    else:
-        await query.edit_message_text("Группа не сохранена.")
+            _ = await query.edit_message_text("Произошла ошибка при сохранении группы.")
 
     return await show_schedule_options(update, context)
 
 async def show_schedule_options(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    # ок опций выбора периода расписания
+    """Показать опции выбора периода расписания"""
     keyboard = [
         [InlineKeyboardButton("Сегодня", callback_data="T")],
         [InlineKeyboardButton("Завтра", callback_data="M")],
@@ -121,19 +129,22 @@ async def show_schedule_options(update: Update, context: ContextTypes.DEFAULT_TY
     return SHOW_SCHEDULE
 
 async def cleansavegroup_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Обработчик команды очистки сохраненной группы
-    user_id = update.effective_user.id
-    db = context.bot_data['db']
-    saved_group = db.get_group(user_id)
+    """Обработчик команды очистки сохраненной группы"""
+    user_id = update.message.from_user.id
+    saved_group = database.get_group(user_id)
     if saved_group:
-        db.clear_group(user_id)
+        database.clear_group(user_id)
         await update.message.reply_text(f"Сохраненная группа {saved_group} удалена.")
     else:
         await update.message.reply_text("У вас нет сохраненной группы.")
 
 async def handle_show_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    query = update.callback_query
-    await query.answer()
+    """Обработчик показа расписания"""
+
+    if not (query := update.callback_query):
+        return END
+    
+    _ = await query.answer()
 
     today = datetime.now()
     
@@ -150,7 +161,7 @@ async def handle_show_schedule(update: Update, context: ContextTypes.DEFAULT_TYP
         next_week_end = next_week_start + timedelta(days=6)
         target_date = DateRange(next_week_start, next_week_end)
 
-    selected_schedule: Union[Lecturer, Group] = context.user_data[SELECTED_SCHEDULE] # type: ignore
+    selected_schedule: Lecturer | Group = context.user_data[SELECTED_SCHEDULE] # pyright: ignore
     is_lecturer = isinstance(selected_schedule, Lecturer)  # Определяем тип расписания
 
     timetable = await asu.get_timetable(selected_schedule, target_date)
@@ -162,37 +173,34 @@ async def handle_show_schedule(update: Update, context: ContextTypes.DEFAULT_TYP
         is_lecturer  # Передаем флаг is_lecturer
     )
 
-    await query.edit_message_text(formatted_timetable, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
+    _ = await query.edit_message_text(formatted_timetable, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
 
     return END
 
-async def find_schedule_of_group(group_name: str) -> Optional[Group]:
-    # оск расписания для заданной группы
-    return await asu.find_schedule_url(group_name)
-
 async def lecturer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик команды /lecturer"""
-    user_id = update.effective_user.id
-    db = context.bot_data['db']
-    saved_lecturer = db.get_lecturer(user_id)
     
-    if saved_lecturer:
-        await update.message.reply_text(f"Используется сохраненный преподаватель: {saved_lecturer}")
-        return await handle_lecturer_schedule(update, context, saved_lecturer)
+    if not ((message := update.message) and (user := message.from_user)):
+        return END
     
-    if not context.args:
+    lecturer_name: str
+    
+    if context.args:
+        lecturer_name = ''.join(context.args)
+    elif (lecturer_name := TelegramBot.database.get_lecturer(user.id)): # pyright: ignore
+        await update.message.reply_text(f"Используется сохраненный преподаватель: {lecturer_name}")
+    else:
         await update.message.reply_text("Введите фамилию преподавателя:")
         return GET_LECTURER_NAME
     
-    lecturer_name = ' '.join(context.args)
     return await handle_lecturer_schedule(update, context, lecturer_name)
 
 async def get_lecturer_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик ввода фамилии преподавателя"""
-    lecturer_name = update.message.text
-    if not lecturer_name:
-        await update.message.reply_text("Пожалуйста, введите корректную фамилию преподавателя.")
-        return GET_LECTURER_NAME
+    
+    if not ((message := update.message) and (lecturer_name := message.text)):
+        return END
+    
     return await handle_lecturer_schedule(update, context, lecturer_name)
 
 async def handle_lecturer_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE, lecturer_name: str) -> int:
@@ -207,8 +215,7 @@ async def handle_lecturer_schedule(update: Update, context: ContextTypes.DEFAULT
     context.user_data[SELECTED_SCHEDULE] = lecturer
     
     user_id = update.effective_user.id
-    db = context.bot_data['db']
-    if not db.get_lecturer(user_id):
+    if not database.get_lecturer(user_id):
         return await ask_to_save_lecturer(update, context, lecturer.name)
     
     return await show_lecturer_schedule_options(update, context)
@@ -226,30 +233,28 @@ async def ask_to_save_lecturer(update: Update, context: ContextTypes.DEFAULT_TYP
     return SAVE_LECTURER
 
 async def save_lecturer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not (query := update.callback_query):
+        return END
+    
     query = update.callback_query
-    await query.answer()
+    _ = await query.answer()
 
     if query.data == "save_lecturer_yes":
         lecturer = context.user_data.get(SELECTED_SCHEDULE)
         if lecturer:
             user_id = update.effective_user.id
-            db = context.bot_data['db']
-            db.save_lecturer(user_id, lecturer.name)
-            await query.edit_message_text(f"Преподаватель {lecturer.name} сохранен.")
+            database.save_lecturer(user_id, lecturer.name)
         else:
             await query.edit_message_text("Произошла ошибка при сохранении преподавателя.")
-    else:
-        await query.edit_message_text("Преподаватель не сохранен.")
 
     # Показываем опции расписания после сохранения/отказа
     return await show_lecturer_schedule_options(update, context)
 
 async def cleansavelect_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
-    db = context.bot_data['db']
-    saved_lecturer = db.get_lecturer(user_id)
+    saved_lecturer = database.get_lecturer(user_id)
     if saved_lecturer:
-        db.clear_lecturer(user_id)
+        database.clear_lecturer(user_id)
         await update.message.reply_text(f"Сохраненный преподаватель {saved_lecturer} удален.")
     else:
         await update.message.reply_text("У вас нет сохраненного преподавателя.")
@@ -304,6 +309,15 @@ async def cancel_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await query.answer()
     return await show_main_menu(update, context)
 
+async def exit_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if context.user_data:
+        context.user_data.pop(SELECTED_SCHEDULE)
+    return END
+
+async def find_schedule_of_group(group_name: str) -> Group | None:
+    # Поиск расписания для заданной группы
+    return await asu.find_schedule_url(group_name)
+
 # Обновляем ConversationHandler для расписания групп
 schedule_handler = ConversationHandler(
     entry_points=[
@@ -325,8 +339,11 @@ schedule_handler = ConversationHandler(
             CallbackQueryHandler(handle_schedule_choice, pattern='^choose_(lecturer|group)$')
         ],
     },
-    fallbacks=[CommandHandler("start", start_callback)],
+    fallbacks=[MessageHandler(filters.COMMAND, exit_conversation)],
+    allow_reentry=True,
+    # https://github.com/python-telegram-bot/python-telegram-bot/wiki/Frequently-Asked-Questions#what-do-the-per_-settings-in-conversationhandler-do
     per_message=False,
+    per_user=False,
     name="schedule_conversation"
 )
 
@@ -349,7 +366,10 @@ lecturer_handler = ConversationHandler(
             CallbackQueryHandler(handle_schedule_choice, pattern='^choose_(lecturer|group)$')
         ],
     },
-    fallbacks=[CommandHandler("start", start_callback)],
+    fallbacks=[MessageHandler(filters.COMMAND, exit_conversation)],
+    allow_reentry=True,
+    # https://github.com/python-telegram-bot/python-telegram-bot/wiki/Frequently-Asked-Questions#what-do-the-per_-settings-in-conversationhandler-do
     per_message=False,
+    per_user=False,
     name="lecturer_conversation"
 )

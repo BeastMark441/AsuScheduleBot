@@ -1,6 +1,4 @@
-from datetime import date, datetime, timedelta
-from operator import le
-from typing import Dict, List, Optional, Union
+from datetime import date
 from frozenlist import FrozenList
 from telegram.helpers import escape_markdown
 import logging
@@ -17,7 +15,7 @@ class ScheduleFormatter:
     """Класс для форматирования расписания"""
     
     def __init__(self, is_lecturer: bool = False):
-        self.is_lecturer = is_lecturer
+        self.is_lecturer: bool = is_lecturer
 
     def format_schedule(self, timetable: TimeTable, schedule_link: str, name: str,
                        date_range: DateRange) -> str:
@@ -53,12 +51,6 @@ class ScheduleFormatter:
             self._format_single_day(lessons, date, formatted_schedule)
             
         return found_lessons
-
-    def _is_date_in_range(self, date: datetime, start_date: datetime, end_date: datetime) -> bool:
-        """Проверяет, входит ли дата в указанный диапазон"""
-        if isinstance(start_date, datetime):
-            return start_date.date() <= date.date() <= end_date.date()
-        return start_date <= date.date() <= end_date
 
     def _format_single_day(self, lessons: list[Lesson], date: date, formatted_schedule: list[str]) -> None:
         """Форматирует один день расписания"""

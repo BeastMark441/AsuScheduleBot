@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from datetime import date
-from typing import Optional
 
 from asu.lecturer import Lecturer
 from asu.group import Group
@@ -20,7 +19,7 @@ class Subject:
     # type of subject. Examples: пр.з. ; лек.
     type: str
     # Optional comment. Example: дистанционно-синхронно
-    comment: Optional[str]
+    comment: str | None
     # name of groups
     groups: list[Group]
     # name of lecturer
