@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import override
 
 @dataclass
 class Group:
@@ -15,6 +14,5 @@ class Group:
         """Получить URL для расписания группы"""
         return f"https://www.asu.ru/timetable/students/{self.faculty_id}/{self.group_id}/"
 
-    @override
     def __str__(self) -> str:
         return f"Группа {self.name}"
