@@ -68,7 +68,7 @@ class APIClient:
             return None
             
         url = self._build_url("search/students/")
-        params = self._build_params({'query': convert_to_russian(query.strip())})
+        params = self._build_params({'query': query.strip()})
         
         try:
             data = await self._make_request(url, params)

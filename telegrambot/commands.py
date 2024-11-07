@@ -173,7 +173,7 @@ async def handle_show_schedule(update: Update, context: ContextTypes.DEFAULT_TYP
         is_lecturer  # Передаем флаг is_lecturer
     )
 
-    _ = await query.edit_message_text(formatted_timetable, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
+    await query.edit_message_text(formatted_timetable, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
 
     return END
 
