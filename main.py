@@ -11,7 +11,7 @@ def setup_logging() -> None:
 
     os.makedirs("logs", exist_ok=True)
 
-    file_handler = logging.handlers.TimedRotatingFileHandler("logs/latest.log", "D", backupCount=3, encoding="utf-8")
+    file_handler = logging.handlers.TimedRotatingFileHandler("logs/latest.log", "midnight", backupCount=3, encoding="utf-8")
 
     logging.basicConfig(
         level=level,
