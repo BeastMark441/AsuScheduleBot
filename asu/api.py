@@ -196,14 +196,14 @@ class APIClient:
         for group_record in record.get("lessonGroups", []):
             lesson_group_record = group_record.get("lessonGroup", {})
 
-            group_name = lesson_group_record.get("groupCode", "")
-            faculty_code = lesson_group_record.get("groupFacultyCode", "")
-            group_id = lesson_group_record.get("groupId", "")
+            group_name = lesson_group_record.get("groupCode") or ""
+            faculty_code = lesson_group_record.get("groupFacultyCode") or ""
+            group_id = lesson_group_record.get("groupId") or ""
 
-            faculty_id = self.faculties.get(faculty_code, "")
-            sub_group = group_record.get("lessonSubGroup", None)
+            faculty_id = self.faculties.get(faculty_code) or ""
+            sub_group = (group_record.get("lessonSubGroup") or "").strip()
 
-            group = Group(group_name, faculty_id, group_id,sub_group)
+            group = Group(group_name, faculty_id, group_id, sub_group)
             groups.append(group)
 
         lecturers: list[Lecturer] = []
@@ -233,10 +233,10 @@ class APIClient:
         room = Room(address, address_code, lesson_room)
 
         subject_title = record.get("lessonSubject", {}).get("subjectTitle", "")
-        subject_type = record.get("lessonSubjectType", "")
-        subject_comment = record.get("lessonCommentary")
+        subject_type = (record.get("lessonSubjectType") or "").strip()
+        subject_comment = (record.get("lessonCommentary") or "").strip()
 
-        return Subject(subject_title, subject_type, subject_comment, groups, lecturers, room)
+        return Subject(title=subject_title, type=subject_type, comment=subject_comment, groups=groups, lecturers=lecturers, room=room)
 
     def _format_lesson(self, record: dict[Any, Any]) -> Lesson:
         number = record.get("lessonNum", "")

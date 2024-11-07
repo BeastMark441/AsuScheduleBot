@@ -70,7 +70,7 @@ async def handle_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE, gr
     
     schedule = await find_schedule_of_group(group_name)
     if not schedule:
-        _ = await update.message.reply_text("Ошибка получения группы. Пожалуйста, проверьте название и попробуйте снова")
+        await update.message.reply_text("Ошибка получения группы. Пожалуйста, проверьте название и попробуйте снова")
         return END
     
     context.user_data[SELECTED_SCHEDULE] = schedule
@@ -173,7 +173,7 @@ async def handle_show_schedule(update: Update, context: ContextTypes.DEFAULT_TYP
         is_lecturer  # Передаем флаг is_lecturer
     )
 
-    await query.edit_message_text(formatted_timetable, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
+    await query.edit_message_text(formatted_timetable, parse_mode=telegram.constants.ParseMode.HTML)
 
     return END
 

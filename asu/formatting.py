@@ -1,6 +1,6 @@
 from datetime import date
 from frozenlist import FrozenList
-from telegram.helpers import escape_markdown
+from html import escape
 import logging
 
 from asu.timetable import Lesson, TimeTable
@@ -25,7 +25,7 @@ class ScheduleFormatter:
         # Формируем заголовок
         header_emoji: str = "👩‍🏫" if self.is_lecturer else "📚"
         header_text: str = "преподавателя" if self.is_lecturer else "группы"
-        formatted_schedule: list[str] = [f"{header_emoji} Расписание {header_text}: {escape_markdown(name, version=2)}\n"]
+        formatted_schedule: list[str] = [f"{header_emoji} Расписание {header_text}: {escape(name)}\n"]
         
         if not timetable.days:
             formatted_schedule.append("На указанный период занятий не найдено\\.")
@@ -55,7 +55,7 @@ class ScheduleFormatter:
     def _format_single_day(self, lessons: list[Lesson], date: date, formatted_schedule: list[str]) -> None:
         """Форматирует один день расписания"""
         formatted_date = date.strftime('%d.%m')
-        formatted_schedule.append(f"📅 {USER_FRIENDLY_WEEKDAYS[date.weekday()]} {escape_markdown(formatted_date, version=2)}\n")
+        formatted_schedule.append(f"📅 {USER_FRIENDLY_WEEKDAYS[date.weekday()]} {escape(formatted_date)}\n")
         
         if not lessons:
             formatted_schedule.append("Нет занятий\n")
@@ -68,34 +68,34 @@ class ScheduleFormatter:
     def _format_lesson(self, lesson: Lesson) -> str:
         """Форматирует информацию о занятии"""
 
-        lesson_subgroups: set[str] = set()
+        lesson_subgroups: list[str] = list()
         for group in lesson.subject.groups:
-            if group.sub_group:
-                lesson_subgroups.update(get_sub(group.sub_group))
+            if group.sub_group and group.sub_group not in lesson_subgroups:
+                lesson_subgroups.append("<i>" + escape(group.sub_group) + "</i> ")
 
         lesson_subgroups_str = ''.join(lesson_subgroups)
-        subject_title = escape_markdown(f"{lesson.subject.type} {lesson.subject.title}", version=2)
+        subject_title = escape(f"{lesson.subject.type} {lesson.subject.title}")
 
         # Формируем строки занятия
         lines = [
-            f"{self._num_to_emoji(lesson.number)}🕑 {escape_markdown(lesson.time_start, version=2)} \\- {escape_markdown(lesson.time_end, version=2)}",
+            f"{self._num_to_emoji(lesson.number)}🕑 {escape(lesson.time_start)} - {escape(lesson.time_end)}",
             f"📚 {lesson_subgroups_str}{subject_title}",
         ]
         
         if self.is_lecturer:
             groups: set[str] = set([group.name for group in lesson.subject.groups]) or {"❓"}
-            lines.append(f"👥 Группы: {escape_markdown(' '.join(groups), version=2)}")
+            lines.append(f"👥 Группы: {escape(' '.join(groups))}")
         else:
             lecturers: set[str] = set([lecturer.position + ' ' + lecturer.name for lecturer in lesson.subject.lecturers]) or {"❓"}
-            lines.append(f"👩 {escape_markdown(' '.join(lecturers), version=2)}")
+            lines.append(f"👩 {escape(' '.join(lecturers))}")
 
         # Добавляем аудиторию
-        room = escape_markdown(f"{lesson.subject.room.number} {lesson.subject.room.address_code}", version=2)
+        room = escape(f"{lesson.subject.room.number} {lesson.subject.room.address_code}")
         lines.append(f"🏢 {room}")
 
         # Добавляем комментарий
         if lesson.subject.comment:
-            lines.append(f"💬 {escape_markdown(lesson.subject.comment, version=2)}")
+            lines.append(f"💬 {escape(lesson.subject.comment)}")
             
         return "\n".join(lines) + "\n"
 
@@ -109,7 +109,7 @@ class ScheduleFormatter:
     @staticmethod
     def _add_schedule_link(formatted_schedule: list[str], schedule_link: str) -> str:
         """Добавляет ссылку на расписание и объединяет все строки"""
-        formatted_schedule.append(f"🚀 [Ссылка на расписание]({escape_markdown(schedule_link)})")
+        formatted_schedule.append(f"🚀 <a href=\"{escape(schedule_link)}\">Ссылка на расписание</a>")
         return "\n".join(formatted_schedule)
 
 # Создаем форматтеры для разных типов расписаний
