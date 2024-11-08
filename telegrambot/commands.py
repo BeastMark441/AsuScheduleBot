@@ -187,7 +187,7 @@ async def lecturer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     
     if context.args:
         lecturer_name = ''.join(context.args)
-    elif (lecturer_name := TelegramBot.database.get_lecturer(user.id)): # pyright: ignore
+    elif (lecturer_name := database.get_lecturer(user.id)):
         await update.message.reply_text(f"Используется сохраненный преподаватель: {lecturer_name}")
     else:
         await update.message.reply_text("Введите фамилию преподавателя:")
