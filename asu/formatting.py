@@ -5,7 +5,6 @@ import logging
 
 from asu.timetable import Lesson, TimeTable
 
-from utils.sub_format import get_sub
 from utils.daterange import DateRange
 
 EMOJI_NUMBERS: FrozenList[str] = FrozenList(["0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"])

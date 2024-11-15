@@ -4,10 +4,10 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-python-telegram-bot = "*"
 python-dotenv = "*"
 httpx = "*"
 frozenlist = "*"
+python-telegram-bot = {extras = ["job-queue"], version = "*"}
 
 [dev-packages]
 pylint = "*"

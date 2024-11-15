@@ -2,7 +2,7 @@ import html
 import json
 import logging
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, JobQueue
 from telegram.constants import ParseMode
 
 from .commands import *

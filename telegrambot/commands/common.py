@@ -11,7 +11,11 @@ from utils.daterange import DateRange
 
 
 END = ConversationHandler.END
-GET_GROUP_NAME, SHOW_SCHEDULE, SAVE_GROUP, GET_LECTURER_NAME, SHOW_LECTURER_SCHEDULE, SAVE_LECTURER, CHOOSE_SCHEDULE_TYPE = range(7)
+
+# Group states
+GET_GROUP_NAME, SAVE_GROUP, SHOW_SCHEDULE = range(3)
+# Lecturer states
+GET_LECTURER_NAME, SAVE_LECTURER, SHOW_LECTURER_SCHEDULE = range(3, 6)
 
 SELECTED_SCHEDULE = 'schedule'
 
@@ -58,5 +62,5 @@ async def handle_show_schedule(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def exit_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if context.user_data:
-        context.user_data.pop(SELECTED_SCHEDULE)
+        context.user_data.clear()
     return END

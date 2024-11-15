@@ -9,7 +9,6 @@ from .timetable import Lesson, Room, Subject, TimeTable
 from .group import Group
 from .lecturer import Lecturer
 from utils.daterange import DateRange
-from utils.latin_to_ru import convert_to_russian
 
 ScheduleType = Group | Lecturer
 
@@ -89,7 +88,7 @@ class APIClient:
             return None
             
         url = self._build_url("search/lecturers/")
-        params = self._build_params({'query': convert_to_russian(query.strip())})
+        params = self._build_params({'query': query.strip()})
         
         try:
             data = await self._make_request(url, params)

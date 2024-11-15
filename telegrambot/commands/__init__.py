@@ -3,3 +3,11 @@ from .cleansavedlecturer_command import cleansavelect_callback
 from .start_command import start_callback
 from .lecturer_command import lecturer_handler
 from .schedule_command import schedule_handler
+
+__all__= [
+    "cleansavegroup_callback",
+    "cleansavelect_callback",
+    "start_callback",
+    "lecturer_handler",
+    "schedule_handler"
+]
