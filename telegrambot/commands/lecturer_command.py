@@ -81,8 +81,7 @@ async def show_lecturer_schedule_options(update: Update, context: ContextTypes.D
         [InlineKeyboardButton("Сегодня", callback_data="T")],
         [InlineKeyboardButton("Завтра", callback_data="M")],
         [InlineKeyboardButton("На эту неделю", callback_data="W")],
-        [InlineKeyboardButton("На следующую неделю", callback_data="NW")],
-        [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+        [InlineKeyboardButton("На следующую неделю", callback_data="NW")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
