@@ -1,7 +1,7 @@
 import html
 import json
 import logging
-import traceback
+from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.constants import ParseMode
 

@@ -1,0 +1,5 @@
+from .cleansavedgroup_command import cleansavegroup_callback
+from .cleansavedlecturer_command import cleansavelect_callback
+from .start_command import start_callback
+from .lecturer_command import lecturer_handler
+from .schedule_command import schedule_handler
