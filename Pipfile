@@ -8,6 +8,9 @@ python-dotenv = "*"
 httpx = "*"
 frozenlist = "*"
 python-telegram-bot = {extras = ["job-queue"], version = "*"}
+alembic = "*"
+asyncmy = "*"
+sqlalchemy = {extras = ["asyncio"], version = "*"}
 
 [dev-packages]
 pylint = "*"

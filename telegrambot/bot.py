@@ -1,8 +1,10 @@
+import asyncio
 import html
 import json
 import logging
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes, JobQueue
+from telegram.error import TelegramError
+from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.constants import ParseMode
 
 from .commands import *
@@ -13,9 +15,10 @@ class TelegramBot():
             raise ValueError("Токен бота не может быть пустым")
         self.token: str = token
         self.developer_chat_id: int = dev_chat_id
+        self.application = None
 
-    def run(self):
-        application = (
+    async def run(self):
+        application = self.application = (
             Application.builder()
             .token(self.token)
             # Processing updates concurrently is not recommended when stateful handlers like telegram.ext.ConversationHandler are used.
@@ -23,7 +26,7 @@ class TelegramBot():
             .concurrent_updates(False)
             .build()
         )
-
+        
         # Используем импортированные обработчики вместо их определения здесь
         application.add_handler(schedule_handler)
         application.add_handler(lecturer_handler)
@@ -33,10 +36,21 @@ class TelegramBot():
         
         application.bot_data['DEVELOPER_CHAT_ID'] = self.developer_chat_id
         application.add_error_handler(error_handler)
-
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
-
-        logging.info("Бот запущен")
+        
+        allowed_updates = [Update.MESSAGE, Update.CALLBACK_QUERY]
+        
+        def error_callback(exc: TelegramError) -> None:
+            application.create_task(self.application.process_error(error=exc, update=None))
+        
+        await application.initialize()
+        await application.updater.start_polling(allowed_updates=allowed_updates, drop_pending_updates=True, error_callback=error_callback)
+        await application.start()
+        
+    async def stop(self):
+        await self.application.updater.stop()
+        await self.application.stop()
+        await self.application.shutdown()
+        
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Log the error before we do anything else, so we can see it even if something breaks.
