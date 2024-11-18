@@ -5,6 +5,8 @@ import asyncio
 import logging
 from datetime import date, datetime
 
+from settings import Settings
+
 from .timetable import Lesson, Room, Subject, TimeTable
 from .group import Group
 from .lecturer import Lecturer
@@ -248,7 +250,8 @@ class APIClient:
         return lesson
 
 # Создаем глобальный экземпляр клиента
-api_client = APIClient(os.getenv('ASU', ''))
+settings: Settings = Settings() # pyright: ignore [reportCallIssue]
+api_client = APIClient(settings.ASU_TOKEN)
 
 # Экспортируем функции для обратной совместимости
 async def find_schedule_url(group_name: str) -> Group | None:

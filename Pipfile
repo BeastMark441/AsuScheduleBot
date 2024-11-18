@@ -11,6 +11,7 @@ python-telegram-bot = {extras = ["job-queue"], version = "*"}
 alembic = "*"
 asyncmy = "*"
 sqlalchemy = {extras = ["asyncio"], version = "*"}
+pydantic-settings = "*"
 
 [dev-packages]
 pylint = "*"
