@@ -12,7 +12,7 @@ from telegram.error import TelegramError
 import logging
 
 from .common import DATABASE, END
-from .admin_command import ADMIN_IDS
+from config import ADMIN_IDS
 
 # Состояния
 CATEGORY_SELECTION = 1
@@ -32,6 +32,20 @@ CATEGORIES = {
     'start': 'Вернуться на старт'
 }
 
+# Кэшируем клавиатуры, чтобы не создавать их каждый раз
+REPORT_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton(text, callback_data=data)]
+    for data, text in CATEGORIES.items()
+])
+
+CONFIRM_KEYBOARD = InlineKeyboardMarkup([[
+    InlineKeyboardButton("Отправить", callback_data="send")
+]])
+
+NOT_LINK_KEYBOARD = InlineKeyboardMarkup([[
+    InlineKeyboardButton("Ошибка не в этом", callback_data="not_link")
+]])
+
 async def report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик команды /report"""
     if not ((message := update.message) and (user := message.from_user)):
@@ -42,15 +56,9 @@ async def report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await message.reply_text("Вам временно ограничен доступ к отправке отчетов об ошибках.")
         return END
 
-    keyboard = [
-        [InlineKeyboardButton(text, callback_data=data)]
-        for data, text in CATEGORIES.items()
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
     await message.reply_text(
         "Если вы обнаружили ошибки, выберите одну из этих категорий:",
-        reply_markup=reply_markup
+        reply_markup=REPORT_KEYBOARD
     )
     return CATEGORY_SELECTION
 
@@ -100,10 +108,9 @@ async def lecturer_input_handler(update: Update, context: ContextTypes.DEFAULT_T
 
 async def techcard_group_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['group'] = update.message.text
-    keyboard = [[InlineKeyboardButton("Ошибка не в этом", callback_data="not_link")]]
     await update.message.reply_text(
         "Если ошибка в том, что ссылка не верна или не актуальна. Введите ссылку на актуальную карту:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=NOT_LINK_KEYBOARD
     )
     return TECHCARD_LINK
 
@@ -123,10 +130,9 @@ async def techcard_link_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def message_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['message'] = update.message.text
-    keyboard = [[InlineKeyboardButton("Отправить", callback_data="send")]]
     await update.message.reply_text(
         "Подтвердите отправку отчета:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=CONFIRM_KEYBOARD
     )
     return CONFIRM_SEND
 
@@ -196,7 +202,7 @@ async def admin_report_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             # Уведомляем пользователя
             await context.bot.send_message(
                 chat_id=user_id,
-                text="❌ Вам ограничен доступ к отправке отчето�� об ошибках."
+                text="❌ Вам ограничен доступ к отправке отчето об ошибках."
             )
         
         elif action == 'report_accept':
@@ -226,6 +232,11 @@ async def admin_report_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         logging.error(f"Ошибка при отправке уведомления пользователю {user_id}: {e}")
         await query.message.reply_text(f"Не удалось отправить уведомление пользователю {user_id}")
 
+async def cancel_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message:
+        await update.message.reply_text("Отправка отчета отменена.")
+    return END
+
 report_handler = ConversationHandler(
     entry_points=[CommandHandler('report', report_callback)],
     states={
@@ -252,7 +263,10 @@ report_handler = ConversationHandler(
             CallbackQueryHandler(send_report, pattern="^send$")
         ]
     },
-    fallbacks=[],
+    fallbacks=[MessageHandler(filters.COMMAND, cancel_report)],
+    per_message=False,
+    per_user=True,
+    per_chat=True,
     name="report_conversation"
 )
 

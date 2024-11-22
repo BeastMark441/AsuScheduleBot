@@ -101,10 +101,10 @@ lecturer_handler = ConversationHandler(
         ],
         SAVE_LECTURER: [CallbackQueryHandler(save_lecturer_callback, pattern='^save_lecturer_yes|save_lecturer_no$')],
     },
-    fallbacks=[MessageHandler(filters.COMMAND, exit_conversation)],
+    fallbacks=[MessageHandler(filters.COMMAND, cancel_conversation)],
     allow_reentry=True,
-    # https://github.com/python-telegram-bot/python-telegram-bot/wiki/Frequently-Asked-Questions#what-do-the-per_-settings-in-conversationhandler-do
     per_message=False,
-    per_user=False,
+    per_user=True,
+    per_chat=True,
     name="lecturer_conversation"
 )

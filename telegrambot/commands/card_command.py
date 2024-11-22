@@ -90,6 +90,11 @@ async def get_other_group(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     group_name = f"К.{group_name}" if not group_name.startswith('К.') else group_name
     return await show_techcard(update, context, group_name)
 
+async def cancel_card(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message:
+        await update.message.reply_text("Поиск техкарты отменен.")
+    return END
+
 # Создаем ConversationHandler для команды card
 card_handler = ConversationHandler(
     entry_points=[
@@ -103,7 +108,10 @@ card_handler = ConversationHandler(
             CallbackQueryHandler(find_other_callback, pattern="^find_other$")
         ]
     },
-    fallbacks=[MessageHandler(filters.COMMAND, lambda u, c: END)],
+    fallbacks=[MessageHandler(filters.COMMAND, cancel_card)],
     allow_reentry=True,
+    per_message=False,
+    per_user=True,
+    per_chat=True,
     name="card_conversation"
 ) 

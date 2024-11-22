@@ -1,10 +1,16 @@
 import sqlite3
 import logging
+from datetime import date
+from config import ADMIN_IDS
 
 class Database:
     def __init__(self, db_name: str = "bot_database.db") -> None:
-        self.conn: sqlite3.Connection = sqlite3.connect(db_name)
+        self.conn: sqlite3.Connection = sqlite3.connect(db_name, check_same_thread=False)
         self.cursor: sqlite3.Cursor = self.conn.cursor()
+        self.cursor.execute('PRAGMA journal_mode=WAL')
+        self.cursor.execute('PRAGMA synchronous=NORMAL')
+        self.cursor.execute('PRAGMA temp_store=MEMORY')
+        self.cursor.execute('PRAGMA cache_size=-2000')
         self.create_tables()
         self.migrate_old_data()
         logging.info("База данных инициализирована")
@@ -18,6 +24,20 @@ class Database:
          group_name TEXT,
          lecturer_name TEXT,
          report_denied INTEGER DEFAULT 0)
+        ''')
+        self.conn.commit()
+
+        # Таблица заметок
+        _ = self.cursor.execute('''
+        CREATE TABLE IF NOT EXISTS notes
+        (id INTEGER PRIMARY KEY AUTOINCREMENT,
+         user_id INTEGER NOT NULL,
+         chat_id INTEGER NOT NULL,
+         subject TEXT NOT NULL,
+         note_text TEXT NOT NULL,
+         note_date DATE NOT NULL,
+         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+         FOREIGN KEY (user_id) REFERENCES users(user_id))
         ''')
         self.conn.commit()
 
@@ -147,3 +167,95 @@ class Database:
         WHERE user_id = ?
         ''', (int(denied), user_id))
         self.conn.commit()
+
+    def add_note(self, user_id: int, chat_id: int, subject: str, note_text: str, note_date: date) -> bool:
+        """Добавляет новую заметку"""
+        try:
+            # Проверяем количество заметок пользователя
+            if chat_id < 0:  # Групповой чат
+                count = self.cursor.execute(
+                    'SELECT COUNT(*) FROM notes WHERE chat_id = ?', 
+                    (chat_id,)
+                ).fetchone()[0]
+            else:  # Личный чат
+                count = self.cursor.execute(
+                    'SELECT COUNT(*) FROM notes WHERE user_id = ? AND chat_id = ?', 
+                    (user_id, chat_id)
+                ).fetchone()[0]
+            
+            if count >= 14 and user_id not in ADMIN_IDS:
+                return False
+            
+            self.cursor.execute('''
+            INSERT INTO notes (user_id, chat_id, subject, note_text, note_date)
+            VALUES (?, ?, ?, ?, ?)
+            ''', (user_id, chat_id, subject, note_text, note_date))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logging.error(f"Ошибка при добавлении заметки: {e}")
+            return False
+
+    def get_notes(self, user_id: int, chat_id: int, date: date | None = None) -> list[tuple]:
+        """Получает заметки пользователя"""
+        try:
+            if date:
+                if chat_id < 0:  # Групповой чат
+                    return self.cursor.execute('''
+                    SELECT id, subject, note_text, note_date, user_id
+                    FROM notes 
+                    WHERE chat_id = ? AND note_date = ?
+                    ORDER BY note_date
+                    ''', (chat_id, date)).fetchall()
+                else:  # Личный чат
+                    return self.cursor.execute('''
+                    SELECT id, subject, note_text, note_date, user_id
+                    FROM notes 
+                    WHERE user_id = ? AND chat_id = ? AND note_date = ?
+                    ORDER BY note_date
+                    ''', (user_id, chat_id, date)).fetchall()
+            else:
+                if chat_id < 0:  # Групповой чат
+                    return self.cursor.execute('''
+                    SELECT id, subject, note_text, note_date, user_id
+                    FROM notes 
+                    WHERE chat_id = ?
+                    ORDER BY note_date
+                    ''', (chat_id,)).fetchall()
+                else:  # Личный чат
+                    return self.cursor.execute('''
+                    SELECT id, subject, note_text, note_date, user_id
+                    FROM notes 
+                    WHERE user_id = ? AND chat_id = ?
+                    ORDER BY note_date
+                    ''', (user_id, chat_id)).fetchall()
+        except Exception as e:
+            logging.error(f"Ошибка при получении заметок: {e}")
+            return []
+
+    def delete_note(self, note_id: int, user_id: int) -> bool:
+        """Удаляет заметку"""
+        try:
+            if user_id in ADMIN_IDS:
+                self.cursor.execute('DELETE FROM notes WHERE id = ?', (note_id,))
+            else:
+                self.cursor.execute(
+                    'DELETE FROM notes WHERE id = ? AND user_id = ?', 
+                    (note_id, user_id)
+                )
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logging.error(f"Ошибка при удалении заметки: {e}")
+            return False
+
+    def cleanup_old_notes(self) -> None:
+        """Удаляет старые заметки"""
+        try:
+            self.cursor.execute('''
+            DELETE FROM notes 
+            WHERE note_date < date('now', '-7 days')
+            ''')
+            self.conn.commit()
+        except Exception as e:
+            logging.error(f"Ошибка при очистке старых заметок: {e}")

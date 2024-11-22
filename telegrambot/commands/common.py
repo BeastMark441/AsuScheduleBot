@@ -2,15 +2,17 @@ from datetime import datetime, timedelta
 from telegram import Update
 import telegram
 from telegram.ext import ContextTypes, ConversationHandler
+import logging
 
 import asu
 from asu.group import Group
 from asu.lecturer import Lecturer
 from telegrambot.database import Database
 from utils.daterange import DateRange
-
+from config import ADMIN_IDS
 
 END = ConversationHandler.END
+DATABASE = Database()
 
 # Group states
 GET_GROUP_NAME, SAVE_GROUP, SHOW_SCHEDULE = range(3)
@@ -19,15 +21,17 @@ GET_LECTURER_NAME, SAVE_LECTURER, SHOW_LECTURER_SCHEDULE = range(3, 6)
 
 SELECTED_SCHEDULE = 'schedule'
 
-DATABASE = Database()
-
 async def handle_show_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик показа расписания"""
-
-    if not (query := update.callback_query):
+    if not update.callback_query:
         return END
-    
-    _ = await query.answer()
+
+    query = update.callback_query
+    await query.answer()
+
+    if not context.user_data:
+        await query.message.edit_text("Произошла ошибка. Попробуйте начать сначала.")
+        return END
 
     today = datetime.now()
     
@@ -44,23 +48,38 @@ async def handle_show_schedule(update: Update, context: ContextTypes.DEFAULT_TYP
         next_week_end = next_week_start + timedelta(days=6)
         target_date = DateRange(next_week_start, next_week_end)
 
-    selected_schedule: Lecturer | Group = context.user_data[SELECTED_SCHEDULE]
-    is_lecturer = isinstance(selected_schedule, Lecturer)  # Определяем тип расписания
+    selected_schedule = context.user_data.get(SELECTED_SCHEDULE)
+    if not selected_schedule:
+        await query.message.edit_text("Произошла ошибка. Попробуйте начать сначала.")
+        return END
 
-    timetable = await asu.get_timetable(selected_schedule, target_date)
-    formatted_timetable = asu.format_schedule(
-        timetable,
-        selected_schedule.get_schedule_url(),
-        selected_schedule.name,
-        target_date,
-        is_lecturer  # Передаем флаг is_lecturer
-    )
+    is_lecturer = isinstance(selected_schedule, Lecturer)
 
-    await query.edit_message_text(formatted_timetable, parse_mode=telegram.constants.ParseMode.HTML)
+    try:
+        timetable = await asu.get_timetable(selected_schedule, target_date)
+        formatted_timetable = asu.format_schedule(
+            timetable,
+            selected_schedule.get_schedule_url(),
+            selected_schedule.name,
+            target_date,
+            is_lecturer
+        )
+
+        await query.edit_message_text(
+            formatted_timetable, 
+            parse_mode=telegram.constants.ParseMode.HTML
+        )
+    except Exception as e:
+        logging.error(f"Ошибка при получении расписания: {e}")
+        await query.message.edit_text("Произошла ошибка при получении расписания.")
+        return END
 
     return END
 
-async def exit_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Общий обработчик отмены диалога"""
+    if update.message:
+        await update.message.reply_text("Действие отменено.")
     if context.user_data:
         context.user_data.clear()
     return END

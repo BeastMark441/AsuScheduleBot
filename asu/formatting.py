@@ -27,14 +27,14 @@ class ScheduleFormatter:
         formatted_schedule: list[str] = [f"{header_emoji} Расписание {header_text}: {escape(name)}\n"]
         
         if not timetable.days:
-            formatted_schedule.append("На указанный период занятий не найдено\\.")
+            formatted_schedule.append("На указанный период занятий не найдено.")
             return self._add_schedule_link(formatted_schedule, schedule_link)
             
         # Форматируем дни
         found_lessons = self._format_days(timetable, date_range, formatted_schedule)
         
         if not found_lessons:
-            formatted_schedule.append("На указанный период занятий не найдено\\.")
+            formatted_schedule.append("На указанный период занятий не найдено.")
             
         return self._add_schedule_link(formatted_schedule, schedule_link)
 

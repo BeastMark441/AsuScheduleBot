@@ -1,12 +1,19 @@
 import logging
+import asyncio
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 from telegram.error import TelegramError
 from telegram.constants import ParseMode
 from .common import DATABASE
+from functools import lru_cache
+from typing import Set
+from config import ADMIN_IDS
 
-# ID администраторов (можно вынести в конфиг или .env)
-ADMIN_IDS = {983524946, 833357373}
+# Кэшируем результаты на 5 минут
+@lru_cache(maxsize=1, typed=False)
+def get_chat_ids() -> Set[int]:
+    users = DATABASE.get_all_users()
+    return {user[0] for user in users}
 
 async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
@@ -36,36 +43,37 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     broadcast_message = ' '.join(context.args)
     
     try:
-        users = DATABASE.get_all_users()
-        chat_ids = {user[0] for user in users}
+        chat_ids = get_chat_ids()  # Используем кэшированную функцию
         
         if not chat_ids:
             await message.reply_text("Нет активных пользователей для рассылки.")
             return
 
         successful = failed = 0
-
-        # Отправляем сообщение в каждый чат
-        for chat_id in chat_ids:
-            try:
-                formatted_message = "📢 Сообщение от администрации:\n\n" + broadcast_message
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=formatted_message,
-                    parse_mode=ParseMode.HTML
-                )
-                successful += 1
-            except TelegramError as e:
-                failed += 1
-                logging.error(f"Ошибка отправки сообщения в чат {chat_id}: {str(e)}")
         
-        # Отправляем статистику
-        status_message = (
+        # Используем asyncio.gather для параллельной отправки сообщений
+        tasks = []
+        for chat_id in chat_ids:
+            task = context.bot.send_message(
+                chat_id=chat_id,
+                text="📢 Сообщение от администрации:\n\n" + broadcast_message,
+                parse_mode=ParseMode.HTML
+            )
+            tasks.append(task)
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for result in results:
+            if isinstance(result, Exception):
+                failed += 1
+            else:
+                successful += 1
+        
+        await message.reply_text(
             f"✅ Успешно отправлено: {successful}\n"
             f"❌ Ошибок отправки: {failed}\n"
             f"📊 Всего пользователей: {len(chat_ids)}"
         )
-        await message.reply_text(status_message)
         
     except Exception as e:
         logging.error(f"Ошибка при рассылке: {e}")

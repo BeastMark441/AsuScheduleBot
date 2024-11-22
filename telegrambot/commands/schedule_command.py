@@ -109,9 +109,7 @@ async def show_schedule_options(update: Update, context: ContextTypes.DEFAULT_TY
     return SHOW_SCHEDULE
         
 schedule_handler = ConversationHandler(
-    entry_points=[
-        CommandHandler("schedule", schedule_callback),
-    ],
+    entry_points=[CommandHandler("schedule", schedule_callback)],
     states={
         GET_GROUP_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_group_name)],
         SAVE_GROUP: [CallbackQueryHandler(save_group_callback, pattern='^save_yes|save_no$')],
@@ -119,11 +117,10 @@ schedule_handler = ConversationHandler(
             CallbackQueryHandler(handle_show_schedule, pattern='^T|M|W|NW$')
         ]
     },
-    fallbacks=[MessageHandler(filters.COMMAND, exit_conversation)],
+    fallbacks=[MessageHandler(filters.COMMAND, cancel_conversation)],
     allow_reentry=True,
-    # https://github.com/python-telegram-bot/python-telegram-bot/wiki/Frequently-Asked-Questions#what-do-the-per_-settings-in-conversationhandler-do
     per_message=False,
-    per_user=False,
-    conversation_timeout=timedelta(seconds=30),
+    per_user=True,
+    per_chat=True,
     name="schedule_conversation"
 )
