@@ -1,4 +1,4 @@
-from .admin_command import admin_handler, send_to_handler
+from .admin_command import admin_handler, send_to_handler, broadcast_handler
 from .start_command import start_callback
 from .schedule_command import schedule_handler
 from .lecturer_command import lecturer_handler
@@ -17,6 +17,7 @@ __all__ = [
     "notes_handler",
     "admin_handler",
     "send_to_handler",
+    "broadcast_handler",
     "admin_report_callback",
     "unblock_handler",
     "cleansavegroup_callback",
