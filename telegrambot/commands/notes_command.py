@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     CommandHandler, 
@@ -10,7 +10,7 @@ from telegram.ext import (
 )
 from telegram.error import TelegramError
 from .common import DATABASE, END
-from .admin_command import ADMIN_IDS
+from config import BOT_ADMIN_IDS, check_admin_rights
 
 # Состояния
 CHOOSE_ACTION = 1
@@ -27,7 +27,7 @@ async def notes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Проверяем права в групповом чате
     if message.chat.type != 'private':
         member = await message.chat.get_member(user.id)
-        if member.status not in ['creator', 'administrator'] and user.id not in ADMIN_IDS:
+        if member.status not in ['creator', 'administrator'] and user.id not in BOT_ADMIN_IDS:
             await message.reply_text(
                 "В групповом чате оставлять заметки могут только администраторы."
             )
@@ -87,10 +87,30 @@ async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         
     try:
         note_date = datetime.strptime(update.message.text, "%d.%m.%Y").date()
+        
+        # Проверяем, что дата не более чем на 14 дней вперед
+        today = datetime.now().date()
+        max_date = today + timedelta(days=14)
+        
+        if note_date > max_date:
+            await update.message.reply_text(
+                "Нельзя создавать заметки более чем на 14 дней вперёд.\n"
+                f"Максимальная дата: {max_date.strftime('%d.%m.%Y')}"
+            )
+            return ENTER_DATE
+            
+        if note_date < today:
+            await update.message.reply_text(
+                "Нельзя создавать заметки на прошедшие даты.\n"
+                f"Минимальная дата: {today.strftime('%d.%m.%Y')}"
+            )
+            return ENTER_DATE
+        
         context.user_data['note_date'] = note_date
         
         await update.message.reply_text("Введите текст заметки:")
         return ENTER_NOTE
+        
     except ValueError:
         await update.message.reply_text(
             "Неверный формат даты. Используйте формат ДД.ММ.ГГГГ"
@@ -213,7 +233,16 @@ async def show_notes_for_deletion(update: Update, context: ContextTypes.DEFAULT_
 
 async def delete_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик удаления заметки"""
-    query = update.callback_query
+    if not (query := update.callback_query):
+        return END
+        
+    user_id = update.effective_user.id
+    
+    # Проверяем права на удаление заметок
+    if not await check_admin_rights(update, user_id, 'can_delete_notes'):
+        await query.answer("У вас нет прав для удаления этой заметки")
+        return END
+    
     await query.answer()
     
     note_id = int(query.data.split('_')[1])
@@ -227,9 +256,12 @@ async def delete_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     return await cancel_notes(update, context)
 
 async def cancel_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Отмена работы с заметками"""
     if update.message:
         await update.message.reply_text("Работа с заметками отменена.")
-    return await cancel_notes(update, context)
+    if context.user_data:
+        context.user_data.clear()
+    return END  # Просто возвращаем END вместо рекурсивного вызова
 
 # Создаем ConversationHandler для команды notes
 notes_handler = ConversationHandler(

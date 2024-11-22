@@ -7,13 +7,36 @@ from telegram.constants import ParseMode
 from .common import DATABASE
 from functools import lru_cache
 from typing import Set
-from config import ADMIN_IDS
+from config import BOT_ADMIN_IDS, AdminRights, check_admin_rights
 
 # Кэшируем результаты на 5 минут
 @lru_cache(maxsize=1, typed=False)
 def get_chat_ids() -> Set[int]:
     users = DATABASE.get_all_users()
     return {user[0] for user in users}
+
+async def check_admin_rights(update: Update, user_id: int, required_right: str) -> bool:
+    """
+    Проверяет права администратора
+    update: Update объект от телеграма
+    user_id: ID пользователя
+    required_right: Требуемое право (например, 'can_broadcast')
+    """
+    # Если пользователь является администратором бота - у него есть все права
+    if user_id in BOT_ADMIN_IDS:
+        return AdminRights.BOT_ADMIN.get(required_right, False)
+        
+    # Проверяем, является ли пользователь администратором чата
+    if update.effective_chat and update.effective_chat.type != 'private':
+        try:
+            member = await update.effective_chat.get_member(user_id)
+            is_chat_admin = member.status in ['creator', 'administrator']
+            if is_chat_admin:
+                return AdminRights.CHAT_ADMIN.get(required_right, False)
+        except Exception:
+            return False
+            
+    return False
 
 async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
@@ -24,7 +47,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not ((message := update.message) and (user := update.effective_user)):
         return
         
-    if user.id not in ADMIN_IDS:
+    if not await check_admin_rights(update, user.id, 'can_broadcast'):
         await message.reply_text("У вас нет прав для использования этой команды.")
         return
     
@@ -89,7 +112,7 @@ async def send_to_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not ((message := update.message) and (user := update.effective_user)):
         return
         
-    if user.id not in ADMIN_IDS:
+    if not await check_admin_rights(update, user.id, 'can_send_to'):
         await message.reply_text("У вас нет прав для использования этой команды.")
         return
     

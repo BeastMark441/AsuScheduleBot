@@ -8,15 +8,22 @@ async def lecturer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if not ((message := update.message) and (user := message.from_user)):
         return END
     
+    # В групповых чатах сохранение преподавателя доступно только администраторам
+    is_group_chat = message.chat.type != 'private'
+    can_save = await check_group_permissions(update, user.id)
+    
     lecturer_name: str
     
     if context.args:
         lecturer_name = ''.join(context.args)
-    elif (lecturer_name := DATABASE.get_lecturer(user.id) or ""):
+    elif (lecturer_name := DATABASE.get_lecturer(user.id) if not is_group_chat else None):
         await update.message.reply_text(f"Используется сохраненный преподаватель: {lecturer_name}")
     else:
-        await update.message.reply_text("Введите фамилию преподавателя:")
-        return GET_LECTURER_NAME
+        await update.message.reply_text(
+            "Введите фамилию преподавателя:" if can_save else 
+            "В групповом чате необходимо указывать преподавателя после команды, например: /lecturer Иванов"
+        )
+        return GET_LECTURER_NAME if can_save else END
     
     return await handle_lecturer_schedule(update, context, lecturer_name)
 

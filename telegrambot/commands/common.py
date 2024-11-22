@@ -9,7 +9,7 @@ from asu.group import Group
 from asu.lecturer import Lecturer
 from telegrambot.database import Database
 from utils.daterange import DateRange
-from config import ADMIN_IDS
+from config import BOT_ADMIN_IDS
 
 END = ConversationHandler.END
 DATABASE = Database()
@@ -83,3 +83,10 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     if context.user_data:
         context.user_data.clear()
     return END
+
+async def check_group_permissions(update: Update, user_id: int) -> bool:
+    """Проверяет права пользователя в групповом чате"""
+    if update.effective_chat and update.effective_chat.type != 'private':
+        member = await update.effective_chat.get_member(user_id)
+        return member.status in ['creator', 'administrator'] or user_id in BOT_ADMIN_IDS
+    return True  # В личных чатах всегда разрешено

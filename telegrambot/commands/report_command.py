@@ -11,8 +11,8 @@ from telegram.constants import ParseMode
 from telegram.error import TelegramError
 import logging
 
-from .common import DATABASE, END
-from config import ADMIN_IDS
+from .common import DATABASE, END, check_group_permissions
+from config import BOT_ADMIN_IDS, check_admin_rights
 
 # Состояния
 CATEGORY_SELECTION = 1
@@ -49,12 +49,14 @@ NOT_LINK_KEYBOARD = InlineKeyboardMarkup([[
 async def report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик команды /report"""
     if not ((message := update.message) and (user := message.from_user)):
-        return await cancel_report(update, context)
+        return END
 
-    # Проверяем, не заблокирован ли пользователь
-    if DATABASE.is_report_denied(user.id):
-        await message.reply_text("Вам временно ограничен доступ к отправке отчетов об ошибках.")
-        return await cancel_report(update, context)
+    # В групповых чатах только администраторы могут отправлять отчеты
+    if not await check_group_permissions(update, user.id):
+        await message.reply_text(
+            "В групповом чате отправлять отчеты могут только администраторы."
+        )
+        return END
 
     # Очищаем предыдущие данные
     if context.user_data:
@@ -81,40 +83,54 @@ async def report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def category_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик выбора категории"""
     if not (query := update.callback_query):
-        return await cancel_report(update, context)
+        return END
         
     await query.answer()
     
-    category = query.data
     if not context.user_data:
-        context.user_data = {}
-    context.user_data['report_category'] = category
+        context.user_data.clear()
+        
+    context.user_data.update({'report_category': query.data})
     
-    if category == 'start':
-        await query.message.edit_text("Вы вернулись в главное меню.")
-        return await cancel_report(update, context)
+    try:
+        if query.data == 'start':
+            await query.message.edit_text("Вы вернулись в главное меню.")
+            context.user_data.clear()
+            return END
+            
+        if query.data == 'group_schedule':
+            await query.message.edit_text("Введите номер вашей группы:")
+            return GROUP_INPUT
+            
+        if query.data == 'lecturer_schedule':
+            await query.message.edit_text("Введите Фамилию преподавателя:")
+            return LECTURER_INPUT
+            
+        if query.data == 'techcard':
+            await query.message.edit_text("Введите номер вашей группы:")
+            return TECHCARD_GROUP
+            
+        if query.data == 'other':
+            await query.message.edit_text(
+                "Введите сообщение для администраторов и постарайтесь объяснить проблему:"
+            )
+            return MESSAGE_INPUT
+            
+        return END
         
-    if category == 'group_schedule':
-        await query.message.edit_text("Введите номер вашей группы:")
-        return GROUP_INPUT
-        
-    if category == 'lecturer_schedule':
-        await query.message.edit_text("Введите Фамилию преподавателя:")
-        return LECTURER_INPUT
-        
-    if category == 'techcard':
-        await query.message.edit_text("Введите номер вашей группы:")
-        return TECHCARD_GROUP
-        
-    if category == 'other':
-        await query.message.edit_text(
-            "Введите сообщение для администраторов и постарайтесь объяснить проблему:"
-        )
-        return MESSAGE_INPUT
-        
-    return await cancel_report(update, context)
+    except Exception as e:
+        logging.error(f"Ошибка при обработке категории: {e}")
+        await query.message.edit_text("Произошла ошибка. Попробуйте позже.")
+        return END
 
 async def group_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработчик ввода группы"""
+    if not update.message or not update.message.text:
+        return END
+        
+    if not context.user_data:
+        context.user_data = {}
+        
     context.user_data['group'] = update.message.text
     await update.message.reply_text(
         "Введите сообщение для администраторов и постарайтесь объяснить проблему:"
@@ -122,6 +138,13 @@ async def group_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     return MESSAGE_INPUT
 
 async def lecturer_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработчик ввода преподавателя"""
+    if not update.message or not update.message.text:
+        return END
+        
+    if not context.user_data:
+        context.user_data = {}
+        
     context.user_data['lecturer'] = update.message.text
     await update.message.reply_text(
         "Введите сообщение для администраторов и постарайтесь объяснить проблему:"
@@ -129,6 +152,13 @@ async def lecturer_input_handler(update: Update, context: ContextTypes.DEFAULT_T
     return MESSAGE_INPUT
 
 async def techcard_group_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработчик ввода группы для техкарты"""
+    if not update.message or not update.message.text:
+        return END
+        
+    if not context.user_data:
+        context.user_data = {}
+        
     context.user_data['group'] = update.message.text
     await update.message.reply_text(
         "Если ошибка в том, что ссылка не верна или не актуальна. Введите ссылку на актуальную карту:",
@@ -137,20 +167,34 @@ async def techcard_group_handler(update: Update, context: ContextTypes.DEFAULT_T
     return TECHCARD_LINK
 
 async def techcard_link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработчик ввода ссылки на техкарту"""
+    if not context.user_data:
+        context.user_data = {}
+        
     if update.callback_query:
         await update.callback_query.answer()
         context.user_data['techcard_link'] = None
         await update.callback_query.message.edit_text(
             "Введите сообщение для администраторов и постарайтесь объяснить проблему:"
         )
-    else:
+    elif update.message and update.message.text:
         context.user_data['techcard_link'] = update.message.text
         await update.message.reply_text(
             "Введите сообщение для администраторов и постарайтесь объяснить проблему:"
         )
+    else:
+        return END
+        
     return MESSAGE_INPUT
 
 async def message_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработчик ввода сообщения"""
+    if not update.message or not update.message.text:
+        return END
+        
+    if not context.user_data:
+        context.user_data = {}
+        
     context.user_data['message'] = update.message.text
     await update.message.reply_text(
         "Подтвердите отправку отчета:",
@@ -159,57 +203,81 @@ async def message_input_handler(update: Update, context: ContextTypes.DEFAULT_TY
     return CONFIRM_SEND
 
 async def send_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    query = update.callback_query
+    """Отправка отчета"""
+    if not (query := update.callback_query) or not query.message:
+        return END
+        
     await query.answer()
     
-    user = query.from_user
-    category = context.user_data.get('report_category')
-    message = context.user_data.get('message')
-    
-    # Формируем сообщение для администраторов
-    report_text = (
-        f"📝 Новый отчет об ошибке\n"
-        f"От пользователя: {user.id} ({user.username or 'без username'})\n"
-        f"Категория: {CATEGORIES[category]}\n"
-    )
-    
-    if category == 'group_schedule':
-        report_text += f"Группа: {context.user_data.get('group')}\n"
-    elif category == 'lecturer_schedule':
-        report_text += f"Преподаватель: {context.user_data.get('lecturer')}\n"
-    elif category == 'techcard':
-        report_text += (
-            f"Группа: {context.user_data.get('group')}\n"
-            f"Ссылка: {context.user_data.get('techcard_link') or 'не указана'}\n"
+    if not (user := query.from_user):
+        await query.message.edit_text("Произошла ошибка при отправке отчета.")
+        return END
+        
+    if not context.user_data:
+        await query.message.edit_text("Произошла ошибка. Попробуйте начать сначала.")
+        return END
+        
+    try:
+        category = context.user_data.get('report_category')
+        message = context.user_data.get('message')
+        
+        if not all([category, message]):
+            await query.message.edit_text("Произошла ошибка. Попробуйте начать сначала.")
+            return END
+        
+        # Формируем сообщение для администраторов
+        report_text = (
+            f"📝 Новый отчет об ошибке\n"
+            f"От пользователя: {user.id} ({user.username or 'без username'})\n"
+            f"Категория: {CATEGORIES[category]}\n"
         )
-    
-    report_text += f"\nСообщение:\n{message}"
-    
-    # Кнопки для администраторов
-    keyboard = [
-        [
-            InlineKeyboardButton("✅ Принято", callback_data=f"report_accept_{user.id}"),
-            InlineKeyboardButton("❌ Отклонено", callback_data=f"report_reject_{user.id}")
-        ],
-        [InlineKeyboardButton("🚫 Заблокировать", callback_data=f"report_block_{user.id}")]
-    ]
-    
-    # Отправляем в чат разработчиков
-    await context.bot.send_message(
-        chat_id=context.application.bot_data['DEVELOPER_CHAT_ID'],
-        text=report_text,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    
-    await query.message.edit_text(
-        "Ваш отчет отправлен! В скором времени его рассмотрят."
-    )
-    return END
+        
+        if category == 'group_schedule':
+            report_text += f"Группа: {context.user_data.get('group')}\n"
+        elif category == 'lecturer_schedule':
+            report_text += f"Преподаватель: {context.user_data.get('lecturer')}\n"
+        elif category == 'techcard':
+            report_text += (
+                f"Группа: {context.user_data.get('group')}\n"
+                f"Ссылка: {context.user_data.get('techcard_link') or 'не указана'}\n"
+            )
+        
+        report_text += f"\nСообщение:\n{message}"
+        
+        # Кнопки для администраторов
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Принято", callback_data=f"report_accept_{user.id}"),
+                InlineKeyboardButton("❌ Отклонено", callback_data=f"report_reject_{user.id}")
+            ],
+            [InlineKeyboardButton("🚫 Заблокировать", callback_data=f"report_block_{user.id}")]
+        ]
+        
+        # Отправляем в чат разработчиков
+        await context.bot.send_message(
+            chat_id=context.application.bot_data['DEVELOPER_CHAT_ID'],
+            text=report_text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        
+        await query.message.edit_text(
+            "Ваш отчет отправлен! В скором времени его рассмотрят."
+        )
+        return END
+        
+    except Exception as e:
+        logging.error(f"Ошибка при отправке отчета: {e}")
+        await query.message.edit_text("Произошла ошибка при отправке отчета.")
+        return END
 
 async def admin_report_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик действий администратора по отчету"""
-    query = update.callback_query
-    if not query:
+    if not (query := update.callback_query):
+        return
+        
+    user_id = update.effective_user.id
+    if not await check_admin_rights(update, user_id, 'can_manage_reports'):
+        await query.answer("У вас нет прав для управления отчетами")
         return
         
     await query.answer()
@@ -255,8 +323,11 @@ async def admin_report_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.reply_text(f"Не удалось отправить уведомление пользователю {user_id}")
 
 async def cancel_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработчик отмены отправки отчета"""
     if update.message:
         await update.message.reply_text("Отправка отчета отменена.")
+    if context.user_data:
+        context.user_data.clear()
     return END
 
 report_handler = ConversationHandler(
@@ -303,7 +374,7 @@ async def unblock_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not ((message := update.message) and (user := update.effective_user)):
         return
         
-    if user.id not in ADMIN_IDS:
+    if user.id not in BOT_ADMIN_IDS:
         await message.reply_text("У вас нет прав для использования этой команды.")
         return
     

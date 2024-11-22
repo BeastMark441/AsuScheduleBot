@@ -15,18 +15,22 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if not ((message := update.message) and (user := message.from_user)):
         return END
     
-    # If user enters group name after the command, then search for it
-    # If no input, then use saved, otherwise ask user to enter group
+    # В групповых чатах сохранение группы доступно только администраторам
+    is_group_chat = message.chat.type != 'private'
+    can_save = await check_group_permissions(update, user.id)
     
     group_name: str
     
     if context.args:
         group_name = ''.join(context.args)
-    elif (group_name := DATABASE.get_group(user.id) or ""):
+    elif (group_name := DATABASE.get_group(user.id) if not is_group_chat else None):
         await update.message.reply_text(f"Используется сохраненная группа: {group_name}")
     else:
-        await update.message.reply_text("Введите название группы:")
-        return GET_GROUP_NAME
+        await update.message.reply_text(
+            "Введите название группы:" if can_save else 
+            "В групповом чате необходимо указывать группу после команды, например: /schedule 305с11-4"
+        )
+        return GET_GROUP_NAME if can_save else END
     
     return await handle_schedule(update, context, group_name)
 

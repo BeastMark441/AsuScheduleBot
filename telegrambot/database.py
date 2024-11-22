@@ -1,7 +1,7 @@
 import sqlite3
 import logging
 from datetime import date
-from config import ADMIN_IDS
+from config import BOT_ADMIN_IDS
 
 class Database:
     def __init__(self, db_name: str = "bot_database.db") -> None:
@@ -183,7 +183,7 @@ class Database:
                     (user_id, chat_id)
                 ).fetchone()[0]
             
-            if count >= 14 and user_id not in ADMIN_IDS:
+            if count >= 14 and user_id not in BOT_ADMIN_IDS:
                 return False
             
             self.cursor.execute('''
@@ -236,7 +236,7 @@ class Database:
     def delete_note(self, note_id: int, user_id: int) -> bool:
         """Удаляет заметку"""
         try:
-            if user_id in ADMIN_IDS:
+            if user_id in BOT_ADMIN_IDS:
                 self.cursor.execute('DELETE FROM notes WHERE id = ?', (note_id,))
             else:
                 self.cursor.execute(
