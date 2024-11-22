@@ -49,7 +49,9 @@ async def notes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def action_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик выбора действия"""
-    query = update.callback_query
+    if not (query := update.callback_query):
+        return END
+        
     await query.answer()
     
     action = query.data

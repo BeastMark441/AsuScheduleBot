@@ -56,9 +56,25 @@ async def report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await message.reply_text("Вам временно ограничен доступ к отправке отчетов об ошибках.")
         return END
 
+    # Очищаем предыдущие данные
+    if context.user_data:
+        context.user_data.clear()
+
+    keyboard = [
+        [
+            InlineKeyboardButton("📝 Поиск расписания группы", callback_data="group_schedule"),
+            InlineKeyboardButton("👨‍🏫 Поиск расписания преподавателя", callback_data="lecturer_schedule")
+        ],
+        [
+            InlineKeyboardButton("📚 Поиск тех.карты", callback_data="techcard"),
+            InlineKeyboardButton("❓ Другая", callback_data="other")
+        ],
+        [InlineKeyboardButton("🔙 Вернуться на старт", callback_data="start")]
+    ]
+    
     await message.reply_text(
         "Если вы обнаружили ошибки, выберите одну из этих категорий:",
-        reply_markup=REPORT_KEYBOARD
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
     return CATEGORY_SELECTION
 
@@ -241,7 +257,7 @@ report_handler = ConversationHandler(
     entry_points=[CommandHandler('report', report_callback)],
     states={
         CATEGORY_SELECTION: [
-            CallbackQueryHandler(category_handler)
+            CallbackQueryHandler(category_handler, pattern="^(group_schedule|lecturer_schedule|techcard|other|start)$")
         ],
         GROUP_INPUT: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, group_input_handler)

@@ -66,6 +66,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         for result in results:
             if isinstance(result, Exception):
                 failed += 1
+                logging.error(f"Ошибка отправки: {result}")
             else:
                 successful += 1
         
@@ -128,5 +129,6 @@ async def send_to_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         logging.error(f"Неожиданная ошибка при отправке сообщения: {e}")
         await message.reply_text("Произошла ошибка при отправке сообщения.")
 
+# Создаем обработчики команд
 admin_handler = CommandHandler("admin", admin_callback)
 send_to_handler = CommandHandler("send_to", send_to_callback) 
