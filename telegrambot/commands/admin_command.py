@@ -36,31 +36,45 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # Получаем информацию из базы данных
         users = DATABASE.get_all_users()
         
-        db_info = (
-            f"\nДанные из базы:\n"
-            f"Всего пользователей: {len(users)}\n\n"
-            "Список пользователей:\n"
-            + "\n".join(
+        # Разбиваем информацию о пользователях на части
+        users_info = []
+        current_part = []
+        
+        for user in users:
+            user_str = (
                 f"ID: {user[0]}, "
                 f"Username: {user[1] or 'нет'}, "
                 f"Имя: {user[2] or 'нет'}, "
                 f"Фамилия: {user[3] or 'нет'}, "
                 f"Группа: {user[4] or 'нет'}, "
                 f"Преподаватель: {user[5] or 'нет'}"
-                for user in users
             )
-        )
+            
+            if len("\n".join(current_part + [user_str])) > 3000:  # Оставляем запас для доп. текста
+                users_info.append("\n".join(current_part))
+                current_part = [user_str]
+            else:
+                current_part.append(user_str)
+                
+        if current_part:
+            users_info.append("\n".join(current_part))
         
+        # Отправляем первое сообщение с общей информацией
         await message.reply_text(
             "Использование: /admin <текст сообщения>\n\n"
             "Отладочная информация:\n"
-            f"{current_chat_info}\n{db_info}"
+            f"{current_chat_info}\n"
+            f"Данные из базы:\n"
+            f"Всего пользователей: {len(users)}\n"
         )
+        
+        # Отправляем информацию о пользователях частями
+        for part in users_info:
+            await message.reply_text(f"Список пользователей:\n{part}")
         return
 
     broadcast_message = ' '.join(context.args)
     
-    # Получаем все уникальные ID чатов из базы данных
     try:
         # Получаем всех пользователей
         users = DATABASE.get_all_users()
