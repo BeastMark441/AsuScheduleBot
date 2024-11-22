@@ -65,38 +65,41 @@ class ScheduleFormatter:
         formatted_schedule.append("")
 
     def _format_lesson(self, lesson: Lesson) -> str:
-        """Форматирует информацию о занятии"""
-
-        lesson_subgroups: list[str] = list()
-        for group in lesson.subject.groups:
-            if group.sub_group and group.sub_group not in lesson_subgroups:
-                lesson_subgroups.append("<i>" + escape(group.sub_group) + "</i> ")
-
-        lesson_subgroups_str = ''.join(lesson_subgroups)
-        subject_title = escape(f"{lesson.subject.type} {lesson.subject.title}")
-
-        # Формируем строки занятия
-        lines = [
-            f"{self._num_to_emoji(lesson.number)}🕑 {escape(lesson.time_start)} - {escape(lesson.time_end)}",
-            f"📚 {lesson_subgroups_str}{subject_title}",
-        ]
+        """Форматирует информацию о занятии в табличном стиле"""
         
+        # Подгруппы
+        subgroups = ''.join([f"<i>{escape(group.sub_group)}</i> " for group in lesson.subject.groups if group.sub_group])
+        
+        # Время
+        time_block = f"{self._num_to_emoji(lesson.number)} {escape(lesson.time_start)}-{escape(lesson.time_end)}"
+        
+        # Предмет
+        subject_block = f"📚 {subgroups}{escape(lesson.subject.type)} {escape(lesson.subject.title)}"
+        
+        # Преподаватели или группы
         if self.is_lecturer:
-            groups: set[str] = set([group.name for group in lesson.subject.groups]) or {"❓"}
-            lines.append(f"👥 Группы: {escape(' '.join(groups))}")
+            groups = set([group.name for group in lesson.subject.groups]) or {"❓"}
+            people_block = f"👥 {escape(' '.join(groups))}"
         else:
-            lecturers: set[str] = set([lecturer.position + ' ' + lecturer.name for lecturer in lesson.subject.lecturers]) or {"❓"}
-            lines.append(f"👩 {escape(' '.join(lecturers))}")
-
-        # Добавляем аудиторию
-        room = escape(f"{lesson.subject.room.number} {lesson.subject.room.address_code}")
-        lines.append(f"🏢 {room}")
-
-        # Добавляем комментарий
+            lecturers = set([f"преп. {lecturer.name}" for lecturer in lesson.subject.lecturers]) or {"❓"}
+            people_block = f"👩 {escape(' '.join(lecturers))}"
+        
+        # Аудитория
+        room_block = f"🏢 {escape(f'{lesson.subject.room.number} {lesson.subject.room.address_code}')}"
+        
+        # Формируем табличный вывод
+        formatted = (
+            f"┌─ {time_block}\n"
+            f"├─ {subject_block}\n"
+            f"├─ {people_block}\n"
+            f"└─ {room_block}\n"
+        )
+        
+        # Добавляем комментарий если есть
         if lesson.subject.comment:
-            lines.append(f"💬 {escape(lesson.subject.comment)}")
-            
-        return "\n".join(lines) + "\n"
+            formatted = formatted[:-1] + f"\n└─ 💬 {escape(lesson.subject.comment)}\n"
+        
+        return formatted
 
     @staticmethod
     def _num_to_emoji(num: str) -> str:

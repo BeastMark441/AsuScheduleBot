@@ -32,6 +32,10 @@ class TelegramBot():
         application.add_handler(CommandHandler("cleansavelect", cleansavelect_callback))
         application.add_handler(card_handler)
         application.add_handler(admin_handler)
+        application.add_handler(report_handler)
+        application.add_handler(admin_report_callback)
+        application.add_handler(unblock_handler)
+        application.add_handler(send_to_handler)
         
         application.bot_data['DEVELOPER_CHAT_ID'] = self.developer_chat_id
         application.add_error_handler(error_handler)

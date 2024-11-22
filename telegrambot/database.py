@@ -7,45 +7,45 @@ class Database:
         self.cursor: sqlite3.Cursor = self.conn.cursor()
         self.create_tables()
         self.migrate_old_data()
+        logging.info("База данных инициализирована")
 
     def create_tables(self) -> None:
-        # Таблица пользователей
+        # Таблица пользователей с username
         _ = self.cursor.execute('''
         CREATE TABLE IF NOT EXISTS users
         (user_id INTEGER PRIMARY KEY,
          username TEXT,
-         first_name TEXT,
-         last_name TEXT,
          group_name TEXT,
          lecturer_name TEXT,
-         first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+         report_denied INTEGER DEFAULT 0)
         ''')
         self.conn.commit()
 
-    def save_user(self, user_id: int, username: str | None, first_name: str | None, last_name: str | None) -> None:
-        """Сохраняет или обновляет информацию о пользователе"""
+    def save_user(self, user_id: int, username: str | None) -> None:
+        """Сохраняет информацию о пользователе"""
         _ = self.cursor.execute('''
-        INSERT OR IGNORE INTO users (user_id, username, first_name, last_name)
-        VALUES (?, ?, ?, ?)
-        ''', (user_id, username, first_name, last_name))
+        INSERT INTO users (user_id, username) 
+        VALUES (?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET username = ?
+        ''', (user_id, username, username))
         self.conn.commit()
 
     def save_group(self, user_id: int, group_name: str) -> None:
         """Обновляет информацию о группе пользователя"""
         _ = self.cursor.execute('''
-        UPDATE users 
-        SET group_name = ?
-        WHERE user_id = ?
-        ''', (group_name, user_id))
+        INSERT INTO users (user_id, group_name) 
+        VALUES (?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET group_name = ?
+        ''', (user_id, group_name, group_name))
         self.conn.commit()
 
     def save_lecturer(self, user_id: int, lecturer_name: str) -> None:
         """Обновляет информацию о преподавателе пользователя"""
         _ = self.cursor.execute('''
-        UPDATE users 
-        SET lecturer_name = ?
-        WHERE user_id = ?
-        ''', (lecturer_name, user_id))
+        INSERT INTO users (user_id, lecturer_name) 
+        VALUES (?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET lecturer_name = ?
+        ''', (user_id, lecturer_name, lecturer_name))
         self.conn.commit()
 
     def get_group(self, user_id: int) -> str | None:
@@ -78,9 +78,9 @@ class Database:
         ''', (user_id,))
         self.conn.commit()
 
-    def get_all_users(self) -> list[tuple]:
+    def get_all_users(self) -> list[tuple[int, str | None, str | None, str | None]]:
         """Получает список всех пользователей с их данными"""
-        cursor = self.cursor.execute('SELECT user_id, username, first_name, last_name, group_name, lecturer_name FROM users')
+        cursor = self.cursor.execute('SELECT user_id, username, group_name, lecturer_name FROM users')
         return cursor.fetchall()
 
     def close(self) -> None:
@@ -89,6 +89,19 @@ class Database:
     def migrate_old_data(self) -> None:
         """Миграция данных из старых таблиц в новую"""
         try:
+            # Проверяем наличие колонки report_denied
+            columns = self.cursor.execute("PRAGMA table_info(users)").fetchall()
+            column_names = [column[1] for column in columns]
+            
+            # Если колонки нет, добавляем её
+            if 'report_denied' not in column_names:
+                logging.info("Добавление колонки report_denied")
+                self.cursor.execute('''
+                    ALTER TABLE users
+                    ADD COLUMN report_denied INTEGER DEFAULT 0
+                ''')
+                self.conn.commit()
+            
             # Проверяем существование старых таблиц
             old_tables = self.cursor.execute("""
                 SELECT name FROM sqlite_master 
@@ -104,16 +117,10 @@ class Database:
             
             # Переносим данные в новую таблицу
             for user_id, group_name in groups:
-                self.cursor.execute('''
-                INSERT OR IGNORE INTO users (user_id, group_name)
-                VALUES (?, ?)
-                ''', (user_id, group_name))
+                self.save_group(user_id, group_name)
                 
             for user_id, lecturer_name in lecturers:
-                self.cursor.execute('''
-                INSERT OR IGNORE INTO users (user_id, lecturer_name)
-                VALUES (?, ?)
-                ''', (user_id, lecturer_name))
+                self.save_lecturer(user_id, lecturer_name)
             
             # Удаляем старые таблицы
             self.cursor.execute('DROP TABLE IF EXISTS user_groups')
@@ -125,3 +132,18 @@ class Database:
         except Exception as e:
             logging.error(f"Ошибка при миграции данных: {e}")
             self.conn.rollback()
+
+    def is_report_denied(self, user_id: int) -> bool:
+        """Проверяет, заблокирован ли пользователь для отправки report"""
+        _ = self.cursor.execute('SELECT report_denied FROM users WHERE user_id = ?', (user_id,))
+        result = self.cursor.fetchone()
+        return bool(result[0]) if result else False
+
+    def set_report_denied(self, user_id: int, denied: bool) -> None:
+        """Устанавливает блокировку report для пользователя"""
+        _ = self.cursor.execute('''
+        UPDATE users 
+        SET report_denied = ?
+        WHERE user_id = ?
+        ''', (int(denied), user_id))
+        self.conn.commit()
