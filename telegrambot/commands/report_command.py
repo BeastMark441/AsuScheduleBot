@@ -49,12 +49,12 @@ NOT_LINK_KEYBOARD = InlineKeyboardMarkup([[
 async def report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик команды /report"""
     if not ((message := update.message) and (user := message.from_user)):
-        return END
+        return await cancel_report(update, context)
 
     # Проверяем, не заблокирован ли пользователь
     if DATABASE.is_report_denied(user.id):
         await message.reply_text("Вам временно ограничен доступ к отправке отчетов об ошибках.")
-        return END
+        return await cancel_report(update, context)
 
     # Очищаем предыдущие данные
     if context.user_data:
@@ -80,15 +80,19 @@ async def report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def category_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик выбора категории"""
-    query = update.callback_query
+    if not (query := update.callback_query):
+        return await cancel_report(update, context)
+        
     await query.answer()
     
     category = query.data
+    if not context.user_data:
+        context.user_data = {}
     context.user_data['report_category'] = category
     
     if category == 'start':
         await query.message.edit_text("Вы вернулись в главное меню.")
-        return END
+        return await cancel_report(update, context)
         
     if category == 'group_schedule':
         await query.message.edit_text("Введите номер вашей группы:")
@@ -107,6 +111,8 @@ async def category_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             "Введите сообщение для администраторов и постарайтесь объяснить проблему:"
         )
         return MESSAGE_INPUT
+        
+    return await cancel_report(update, context)
 
 async def group_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['group'] = update.message.text

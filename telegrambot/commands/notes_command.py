@@ -50,7 +50,7 @@ async def notes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def action_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик выбора действия"""
     if not (query := update.callback_query):
-        return END
+        return await cancel_notes(update, context)
         
     await query.answer()
     
@@ -63,12 +63,12 @@ async def action_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     elif action == "delete_note":
         return await show_notes_for_deletion(update, context)
     
-    return END
+    return await cancel_notes(update, context)
 
 async def subject_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик ввода предмета"""
     if not update.message:
-        return END
+        return await cancel_notes(update, context)
         
     if not context.user_data:
         context.user_data.clear()  # Очищаем существующий словарь
@@ -83,7 +83,7 @@ async def subject_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик ввода даты"""
     if not update.message or not update.message.text:
-        return END
+        return await cancel_notes(update, context)
         
     try:
         note_date = datetime.strptime(update.message.text, "%d.%m.%Y").date()
@@ -100,14 +100,14 @@ async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик ввода текста заметки"""
     if not (update.message and update.effective_user and update.effective_chat):
-        return END
+        return await cancel_notes(update, context)
         
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     
     if not all(key in context.user_data for key in ['subject', 'note_date']):
         await update.message.reply_text("Произошла ошибка. Попробуйте начать сначала.")
-        return END
+        return await cancel_notes(update, context)
     
     success = DATABASE.add_note(
         user_id=user_id,
@@ -126,16 +126,16 @@ async def note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     
     # Очищаем данные после успешного добавления
     context.user_data.clear()
-    return END
+    return await cancel_notes(update, context)
 
 async def show_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Показывает заметки пользователя"""
     if not (query := update.callback_query):
-        return END
+        return await cancel_notes(update, context)
         
     if not update.effective_user or not update.effective_chat:
         await query.message.edit_text("Произошла ошибка. Попробуйте позже.")
-        return END
+        return await cancel_notes(update, context)
         
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
@@ -144,7 +144,7 @@ async def show_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
     if not notes:
         await query.message.edit_text("У вас пока нет заметок.")
-        return END
+        return await cancel_notes(update, context)
     
     text = "📝 Ваши заметки:\n\n"
     for note in notes:
@@ -169,16 +169,16 @@ async def show_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         )
     
     await query.message.edit_text(text)
-    return END
+    return await cancel_notes(update, context)
 
 async def show_notes_for_deletion(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Показывает заметки для удаления"""
     if not (query := update.callback_query):
-        return END
+        return await cancel_notes(update, context)
         
     if not update.effective_user or not update.effective_chat:
         await query.message.edit_text("Произошла ошибка. Попробуйте позже.")
-        return END
+        return await cancel_notes(update, context)
         
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
@@ -187,7 +187,7 @@ async def show_notes_for_deletion(update: Update, context: ContextTypes.DEFAULT_
     
     if not notes:
         await query.message.edit_text("У вас нет заметок для удаления.")
-        return END
+        return await cancel_notes(update, context)
     
     keyboard = []
     for note in notes:
@@ -224,12 +224,12 @@ async def delete_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         await query.message.edit_text("❌ Не удалось удалить заметку.")
     
-    return END
+    return await cancel_notes(update, context)
 
 async def cancel_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if update.message:
         await update.message.reply_text("Работа с заметками отменена.")
-    return END
+    return await cancel_notes(update, context)
 
 # Создаем ConversationHandler для команды notes
 notes_handler = ConversationHandler(
