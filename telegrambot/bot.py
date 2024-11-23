@@ -15,7 +15,7 @@ settings = Settings() # pyright: ignore[reportCallIssue]
 # pyright: reportUnknownMemberType=false
 async def on_post_init(application: Application): # pyright: ignore[reportMissingTypeArgument, reportUnknownParameterType]
     application.bot_data._settings = settings
-    
+
     application.add_handler(schedule_handler)
     application.add_handler(lecturer_handler)
     application.add_handler(CommandHandler("start", start_callback))
@@ -25,6 +25,13 @@ async def on_post_init(application: Application): # pyright: ignore[reportMissin
     application.add_error_handler(error_handler)
 
 async def error_handler(update: object, context: ApplicationContext) -> None:
+    comment: str = ""
+    
+    # If exception happended in message update, then notify about the error to the user
+    if isinstance(update, Update) and (message := update.message):
+        comment = "Пользователь получил сообщение об ошибке."
+        await message.reply_text("Произошла ошибка. Пожалуйста, попробуйте еще раз позже или свяжитесь с поддержкой.")
+    
     # Log the error before we do anything else, so we can see it even if something breaks.
     logging.error("Exception while handling an update:", exc_info=context.error)
     
@@ -34,6 +41,7 @@ async def error_handler(update: object, context: ApplicationContext) -> None:
     update_str = update.to_dict() if isinstance(update, Update) else str(update)
     message = (
         "An exception was raised while handling an update\nSee latest.log to get trace back\n"
+        f"{comment}{"\n" if comment else ""}"
         f"<pre>update = {html.escape(json.dumps(update_str, indent=2, ensure_ascii=False))}"
         "</pre>\n\n"
         f"<pre>chat_data = {html.escape(str(context.chat_data))}</pre>\n\n"

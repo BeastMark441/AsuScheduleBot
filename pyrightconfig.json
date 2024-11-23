@@ -1,0 +1,6 @@
+{
+    "exclude": ["alembic/versions"],
+    "reportOptionalMemberAccess": "warning",
+    "reportAny": "none",
+    "reportUnusedCallResult": "none"
+}

@@ -67,10 +67,8 @@ class ScheduleFormatter:
     def _format_lesson(self, lesson: Lesson) -> str:
         """Форматирует информацию о занятии"""
 
-        lesson_subgroups: list[str] = list()
-        for group in lesson.subject.groups:
-            if group.sub_group and group.sub_group not in lesson_subgroups:
-                lesson_subgroups.append("<i>" + escape(group.sub_group) + "</i> ")
+        lesson_subgroups: list[str] = lesson.subject.sub_groups or []
+        lesson_subgroups = [f"<i>{escape(subgroup)}</i> " for subgroup in lesson_subgroups]
 
         lesson_subgroups_str = ''.join(lesson_subgroups)
         subject_title = escape(f"{lesson.subject.type} {lesson.subject.title}")

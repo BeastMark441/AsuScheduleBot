@@ -5,6 +5,7 @@ import os
 from sys import stdout
 
 from dotenv import load_dotenv
+from telegram.constants import UpdateType
 
 from database import db
 from telegrambot.bot import application
@@ -36,10 +37,11 @@ def main() -> None:
     load_dotenv()
     setup_logging()
     
-    loop = asyncio.new_event_loop()
+    loop = asyncio.get_event_loop()
     loop.run_until_complete(setup_database())
     
-    application.run_polling(drop_pending_updates=True)
+    allowed_updates: list[str] = [UpdateType.MESSAGE, UpdateType.CALLBACK_QUERY]
+    application.run_polling(allowed_updates=allowed_updates, drop_pending_updates=True)
     
 
 if __name__ == '__main__':
