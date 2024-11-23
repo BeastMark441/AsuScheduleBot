@@ -88,7 +88,7 @@ class Stat(Base):
     __tablename__: str = "stats"
     
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(nullable=False)
+    user_id: Mapped[int] = mapped_column(BigInteger(), nullable=False)
     search_type: Mapped[SearchType] = mapped_column(nullable=False)
     search_query: Mapped[str] = mapped_column(String(255), nullable=False)
     timestamp: Mapped[datetime] = mapped_column(nullable=False)
