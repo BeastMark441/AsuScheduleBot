@@ -115,8 +115,8 @@ lecturer_handler = ConversationHandler(
     },
     fallbacks=[MessageHandler(filters.COMMAND, exit_conversation)],
     allow_reentry=True,
-    # https://github.com/python-telegram-bot/python-telegram-bot/wiki/Frequently-Asked-Questions#what-do-the-per_-settings-in-conversationhandler-do
     per_message=False,
-    per_user=False,
+    per_user=True,
+    per_chat=True,
     name="lecturer_conversation"
 )
