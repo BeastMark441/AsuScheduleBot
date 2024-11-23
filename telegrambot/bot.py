@@ -5,7 +5,6 @@ import logging
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import Application, ApplicationBuilder, CommandHandler
-from datetime import time
 
 from settings import Settings
 from telegrambot.commands import *
@@ -23,25 +22,8 @@ async def on_post_init(application: Application): # pyright: ignore[reportMissin
 
     application.add_handler(schedule_handler)
     application.add_handler(lecturer_handler)
-    application.add_handler(card_handler)
-    application.add_handler(report_handler)
-    application.add_handler(notes_handler)
-    
-    application.add_handler(admin_handler)
-    application.add_handler(send_to_handler)
-    application.add_handler(admin_report_callback)
-    application.add_handler(unblock_handler)
-    application.add_handler(broadcast_handler)
     
     application.add_error_handler(error_handler)
-
-    # Задачи
-    if application.job_queue:
-        application.job_queue.run_daily(
-            cleanup_notes,
-            time=time(0, 0),
-            days=(0, 1, 2, 3, 4, 5, 6)
-        )
 
 async def error_handler(update: object, context: ApplicationContext) -> None:
     comment: str = ""
