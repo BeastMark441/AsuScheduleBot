@@ -1,7 +1,7 @@
 from datetime import datetime
 import enum
 
-from sqlalchemy import ForeignKey, String, Text, select
+from sqlalchemy import ForeignKey, String, Text, BigInteger, select
 from sqlalchemy.ext.asyncio import AsyncAttrs, AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.ext.hybrid import hybrid_method
@@ -56,7 +56,7 @@ class LecturerSchedule(Base):
 class User(Base):
     __tablename__: str = "users"
     
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger(), primary_key=True)
     saved_group_id: Mapped[int | None] = mapped_column(ForeignKey("groups.id"), nullable=True)
     saved_lecturer_id: Mapped[int | None] = mapped_column(ForeignKey("lecturers.id"), nullable=True)
     
