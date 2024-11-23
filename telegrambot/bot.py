@@ -33,11 +33,8 @@ async def disabled_command_handler(update: Update, _context: ApplicationContext)
     await update.message.reply_text("Данная команда была отключена")
 
 async def error_handler(update: object, context: ApplicationContext) -> None:
-    comment: str = ""
-    
     # If exception happended in message update, then notify about the error to the user
     if isinstance(update, Update) and (message := update.message):
-        comment = "Пользователь получил сообщение об ошибке."
         await message.reply_text("Произошла ошибка. Пожалуйста, попробуйте еще раз позже или свяжитесь с поддержкой.")
     
     # Log the error before we do anything else, so we can see it even if something breaks.
@@ -49,7 +46,6 @@ async def error_handler(update: object, context: ApplicationContext) -> None:
     update_str = update.to_dict() if isinstance(update, Update) else str(update)
     message = (
         "An exception was raised while handling an update\nSee latest.log to get trace back\n"
-        f"{comment}{"\n" if comment else ""}"
         f"<pre>update = {html.escape(json.dumps(update_str, indent=2, ensure_ascii=False))}"
         "</pre>\n\n"
         f"<pre>chat_data = {html.escape(str(context.chat_data))}</pre>\n\n"
