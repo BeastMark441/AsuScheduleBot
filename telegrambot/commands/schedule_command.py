@@ -15,7 +15,6 @@ async def schedule_callback(update: Update, context: ApplicationContext) -> int:
     
     group_name = ''.join(context.args) if context.args else ""
     if group_name:
-        
         return await handle_schedule_by_name(update, context, group_name)
     
     group = await get_saved_group(update.effective_user)

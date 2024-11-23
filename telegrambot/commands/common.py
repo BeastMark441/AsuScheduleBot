@@ -30,10 +30,8 @@ async def get_saved_group(user: User | None) -> models.Group | None:
             result = await session.execute(stmt)
             db_user = result.scalar()
             
-            if not db_user or db_user.saved_group_id:
-                return None
-            
-            return await db_user.saved_group(session)
+            if db_user and db_user.saved_group_id:
+                return await db_user.saved_group(session)
             
     return None
 
@@ -68,11 +66,9 @@ async def get_saved_lecturer(user: User | None) -> models.Lecturer | None:
             result = await session.execute(stmt)
             db_user = result.scalar()
             
-            if not db_user or db_user.saved_lecturer_id:
-                return None
-            
-            return await db_user.saved_lecturer(session)
-            
+            if db_user and db_user.saved_lecturer_id:
+                return await db_user.saved_lecturer(session)
+
     return None
 
 async def set_saved_lecturer(user: User | None, lecturer: models.Lecturer | None) -> None:
