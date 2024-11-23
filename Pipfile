@@ -8,9 +8,13 @@ python-dotenv = "*"
 httpx = "*"
 frozenlist = "*"
 python-telegram-bot = {extras = ["job-queue"], version = "*"}
+alembic = "*"
+sqlalchemy = {extras = ["asyncio"], version = "*"}
+pydantic-settings = "*"
+aiomysql = "*"
 
 [dev-packages]
-pylint = "*"
+basedpyright = "*"
 
 [requires]
-python_version = "3.13"
+python_version = "3.10"

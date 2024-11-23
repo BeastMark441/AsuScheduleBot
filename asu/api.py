@@ -1,47 +1,49 @@
-import os
-from typing import Any
-import httpx
 import asyncio
-import logging
 from datetime import date, datetime
+import logging
+from typing import Any
+
+import httpx
+from sqlalchemy import select
+
+from database.db import create_session
+from database.models import Faculty, Group, Lecturer
+import database.models as models
+from settings import Settings
+from utils.daterange import DateRange
 
 from .timetable import Lesson, Room, Subject, TimeTable
-from .group import Group
-from .lecturer import Lecturer
-from utils.daterange import DateRange
 
 ScheduleType = Group | Lecturer
 
-logger: logging.Logger = logging.getLogger(__name__)
+_logger: logging.Logger = logging.getLogger(__name__)
+_settings: Settings = Settings() # pyright: ignore [reportCallIssue]
 
 class APIClient:
     def __init__(self, token: str) -> None:
         if not token:
             raise ValueError("API token is required")
-        self.token: str = token
-        self.client: httpx.AsyncClient = httpx.AsyncClient(timeout=30.0)
-        self.base_url: str = "https://www.asu.ru/timetable"
-
-        # lookup dict to get faculty id from code name
-        # Example: СПО - 15
-        self.faculties: dict[str, str] = dict()
         
-    async def create_list_of_faculty_if_empty(self) -> None:
-        if self.faculties:
-            return
+        self.token: str = token
+        self.client: httpx.AsyncClient = httpx.AsyncClient()
+        self.base_url: str = "https://www.asu.ru/timetable"
+        self.faculties: dict[str, int] = {}
+        
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self.load_faculties())
 
-        faculties = await self._make_request(self._build_url("students"), self._build_params())
-        records: dict[Any, Any] = faculties.get("faculties", {}).get("records", {})
-
-        for record in records:
-            code = record.get("facultyCode")
-            id = record.get("facultyId")
-
-            if code and id:
-                self.faculties[code] = id
-
-        if len(self.faculties) == 0:
-            raise ValueError("Failed to get faculties.")
+    async def load_faculties(self) -> None:
+        stmt = select(Faculty)
+        
+        async for session in create_session():
+            async with session.begin():
+                result = await session.execute(stmt)
+                
+                for faculty in result.scalars():
+                    self.faculties[faculty.faculty_code] = faculty.faculty_id
+                    
+        if not self.faculties:
+            raise ValueError("Failed to load data. Is database correctly installed?")
     
     def _build_url(self, endpoint: str) -> str:
         return f"{self.base_url}/{endpoint}"
@@ -63,96 +65,141 @@ class APIClient:
             raise
 
     async def search_group(self, query: str) -> Group | None:
-        if not query.strip():
-            return None
-            
-        url = self._build_url("search/students/")
-        params = self._build_params({'query': query.strip()})
+        # Limit to 50 chars
+        query = query.strip()[:50]
         
-        try:
-            data = await self._make_request(url, params)
-            groups = data.get("groups", {}).get("records", [])
-            
-            if not groups:
-                return None
-                
-            record = groups[0]
-            faculty_id = record["path"].split("/")[0]
-            return Group(record["groupCode"], faculty_id, record["groupId"])
-        except Exception as e:
-            logging.error(f"Failed to search group: {str(e)}")
+        if not query:
             return None
+        
+        # Check in database first
+        stmt = select(models.Group).where(models.Group.name.like("%{}%".format(query)))
+        async for session in create_session():
+            async with session.begin():
+                result = await session.execute(stmt)
+                group = result.scalar()
+                
+                if group:
+                    return group
+                
+        # Sad, not in the database, query the API then
+        url = self._build_url("search/students/")
+        params = self._build_params({'query': query})
+        
+        data = await self._make_request(url, params)
+        groups = data.get("groups", {}).get("records", [])
+        
+        if not groups:
+            return None
+            
+        record = groups[0]
+        faculty_id = record["path"].split("/")[0]
+        group_code = record["groupCode"] # or group name
+        group_id = record["groupId"]
+        
+        group = models.Group(
+                    group_id=int(group_id),
+                    faculty_id=int(faculty_id),
+                    name=group_code
+                )
+        
+        # cache the result to database
+        async for session in create_session():
+            async with session.begin():
+                session.add(group)
+                
+                await session.commit()
+        
+        return group
 
     async def search_lecturer(self, query: str) -> Lecturer | None:
-        if not query.strip():
-            return None
-            
-        url = self._build_url("search/lecturers/")
-        params = self._build_params({'query': query.strip()})
+        # Limit to 50 chars
+        query = query.strip()[:50]
         
-        try:
-            data = await self._make_request(url, params)
-            lecturers = data.get("lecturers", {}).get("records", [])
-            
-            if not lecturers:
-                return None
-                
-            record = lecturers[0]
-            path_parts = record["path"].rstrip('/').split('/')
-            
-            if len(path_parts) < 3:
-                return None
-                
-            return Lecturer(
-                name=record["lecturerName"],
-                faculty_id=path_parts[0],
-                chair_id=path_parts[1],
-                lecturer_id=path_parts[2],
-                position="" # FIXME
-            )
-        except Exception as e:
-            logger.error(f"Failed to search lecturer: {str(e)}")
+        if not query:
             return None
+        
+        # Check in database first
+        stmt = select(models.Lecturer).where(models.Lecturer.name.like("%{}%".format(query)))
+        async for session in create_session():
+            async with session.begin():                
+                result = await session.execute(stmt)
+                lecturer = result.scalar()
+                
+                if lecturer:
+                    return lecturer
+           
+        # Sad, not in the database, query the API then
+        url = self._build_url("search/lecturers/")
+        params = self._build_params({'query': query})
+        
+        data = await self._make_request(url, params)
+        lecturers = data.get("lecturers", {}).get("records", [])
+        
+        if not lecturers:
+            return None
+            
+        record = lecturers[0]
+        lecturer_faculty_id = record["path"].split("/")[0] # FACULTY_ID/CHAIR_ID/LECTURER_ID
+        lecturer_id = record["lecturerId"]
+        lecturer_name = record["lecturerName"]
+        lecturer_position = record["lecturerPosition"]
+        lecturer_id_chair = record["lecturerIdChair"]
+        
+        # cache the result to database
+        async for session in create_session():
+            async with session.begin():
+                session.add(models.Lecturer(
+                    lecturer_id=int(lecturer_id),
+                    faculty_id=int(lecturer_faculty_id),
+                    chair_id=int(lecturer_id_chair),
+                    name=lecturer_name,
+                    position=lecturer_position,
+                ))
+                
+                await session.commit()
+            
+        return Lecturer(
+            name=lecturer_name,
+            faculty_id=lecturer_faculty_id,
+            chair_id=lecturer_id_chair,
+            lecturer_id=lecturer_id_chair,
+            position=lecturer_position
+        )
 
     async def get_schedule(self, schedule: ScheduleType, target_date: DateRange) -> TimeTable:
-        # initialize dict lookup
-        await self.create_list_of_faculty_if_empty()
+        # todo: add caching
         
-        url: str = schedule.get_schedule_url()
+        url: str = schedule.schedule_url
         params: dict[str, str] = self._build_params()
         
         params['date'] = self._format_date_param(target_date)
             
-        try:
-            data = await self._make_request(url, params)
+        data = await self._make_request(url, params)
 
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Получены данные расписания: {data}")
-            
-            is_lecturer = isinstance(schedule, Lecturer)
-            logger.debug("Тип расписания: %s", 'преподаватель' if is_lecturer else 'группа')
-            
-            schedule_data: dict[Any, Any] = data.get("schedule", {})
-            records: list[dict[Any, Any]] = schedule_data.get("records", [])
-            logger.info("Найдено %d записей в расписании", len(records))
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug(f"Получены данные расписания: {data}")
+        
+        is_lecturer = isinstance(schedule, Lecturer)
+        _logger.debug("Тип расписания: %s", 'преподаватель' if is_lecturer else 'группа')
+        
+        schedule_data: dict[Any, Any] = data.get("schedule", {})
+        records: list[dict[Any, Any]] = schedule_data.get("records", [])
+        _logger.info("Найдено %d записей в расписании", len(records))
 
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug("Записи расписания: {}".format(records))
-            
-            if not records:
-                logger.warning("Расписание пустое")
-                return TimeTable({})
-                
-            time_table = self._process_schedule_data(records, target_date)
-            logger.info("Обработано дней: %d", len(time_table.days))
-
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug("Обработанные данные: {}".format(time_table))
-
-            return time_table
-        except Exception as e:
-            logging.error(f"Failed to get schedule: {str(e)}")
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug("Записи расписания: {}".format(records))
+        
+        if not records:
+            _logger.warning("Расписание пустое")
             return TimeTable({})
+            
+        time_table = self._process_schedule_data(records, target_date)
+        _logger.info("Обработано дней: %d", len(time_table.days))
+
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug("Обработанные данные: {}".format(time_table))
+
+        return time_table
 
     @staticmethod
     def _format_date_param(target_date: DateRange) -> str:
@@ -190,6 +237,7 @@ class APIClient:
     
     def _get_subject(self, record: dict[Any, Any]) -> Subject:
         groups: list[Group] = []
+        sub_groups: list[str] = []
 
         group_record: dict[Any, Any]
         for group_record in record.get("lessonGroups", []):
@@ -202,8 +250,12 @@ class APIClient:
             faculty_id = self.faculties.get(faculty_code) or ""
             sub_group = (group_record.get("lessonSubGroup") or "").strip()
 
-            group = Group(group_name, faculty_id, group_id, sub_group)
+            group = Group(group_id=int(group_id), faculty_id=int(faculty_id),
+                          name=group_name)
             groups.append(group)
+            
+            if sub_group:
+                sub_groups.append(sub_group)
 
         lecturers: list[Lecturer] = []
 
@@ -216,7 +268,11 @@ class APIClient:
 
             faculty_id = self.faculties.get(lecturer_faculty_code, "")
 
-            lecturer = Lecturer(name, faculty_id, chair_id, lecturer_id, lecturer_position)
+            lecturer = Lecturer(lecturer_id=int(lecturer_id),
+                                faculty_id=int(faculty_id),
+                                chair_id=int(chair_id),
+                                name=name,
+                                position=lecturer_position)
             lecturers.append(lecturer)
 
         building = record.get("lessonBuilding", {})
@@ -247,15 +303,4 @@ class APIClient:
         
         return lesson
 
-# Создаем глобальный экземпляр клиента
-api_client = APIClient(os.getenv('ASU', ''))
-
-# Экспортируем функции для обратной совместимости
-async def find_schedule_url(group_name: str) -> Group | None:
-    return await api_client.search_group(group_name)
-
-async def find_lecturer_schedule(lecturer_name: str) -> Lecturer | None:
-    return await api_client.search_lecturer(lecturer_name)
-
-async def get_timetable(schedule: ScheduleType, target_date: DateRange) -> TimeTable:
-    return await api_client.get_schedule(schedule, target_date)
+client: APIClient = APIClient(token=_settings.ASU_TOKEN)

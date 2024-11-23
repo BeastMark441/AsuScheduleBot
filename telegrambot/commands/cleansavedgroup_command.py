@@ -1,12 +1,11 @@
 from .common import *
 
-
-async def cleansavegroup_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def cleansavegroup_callback(update: Update, _context: ApplicationContext) -> None:
     """Обработчик команды очистки сохраненной группы"""
-    user_id = update.message.from_user.id
-    saved_group = DATABASE.get_group(user_id)
+    
+    saved_group = await get_saved_group(update.effective_user)
     if saved_group:
-        DATABASE.clear_group(user_id)
+        await set_saved_group(update.effective_user, None)
         await update.message.reply_text(f"Сохраненная группа {saved_group} удалена.")
     else:
         await update.message.reply_text("У вас нет сохраненной группы.")

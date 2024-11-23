@@ -1,81 +1,74 @@
 import html
 import json
 import logging
+
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes, JobQueue
 from telegram.constants import ParseMode
-from datetime import time
+from telegram.ext import Application, ApplicationBuilder, CommandHandler
 
-from .commands import *
+from settings import Settings
+from telegrambot.commands import *
+from telegrambot.context import ApplicationContext, context_types
 
-class TelegramBot():
-    def __init__(self, token: str, dev_chat_id: int):
-        if not token:
-            raise ValueError("Токен бота не может быть пустым")
-        self.token: str = token
-        self.developer_chat_id: int = dev_chat_id
+settings = Settings() # pyright: ignore[reportCallIssue]
 
-    def run(self):
-        application = (
-            Application.builder()
-            .token(self.token)
-            .concurrent_updates(False)
-            .build()
-        )
+# pyright: reportUnknownMemberType=false
+async def on_post_init(application: Application): # pyright: ignore[reportMissingTypeArgument, reportUnknownParameterType]
+    application.bot_data._settings = settings
 
-        # Базовые команды
-        application.add_handler(CommandHandler("start", start_callback))
-        application.add_handler(CommandHandler("cleansavegroup", cleansavegroup_callback))
-        application.add_handler(CommandHandler("cleansavelect", cleansavelect_callback))
+    application.add_handler(CommandHandler("start", start_callback))
+    application.add_handler(CommandHandler("cleansavegroup", cleansavegroup_callback))
+    application.add_handler(CommandHandler("cleansavelect", cleansavelect_callback))
 
-        # Основные обработчики
-        application.add_handler(schedule_handler)
-        application.add_handler(lecturer_handler)
-        application.add_handler(card_handler)
-        application.add_handler(report_handler)
-        application.add_handler(notes_handler)
+    application.add_handler(schedule_handler)
+    application.add_handler(lecturer_handler)
+    
+    application.add_error_handler(error_handler)
+    
+    # TODO: remove when these commands will be fixed
+    for disabled_command in ["card", "report", "notes"]:
+        application.add_handler(CommandHandler(disabled_command, disabled_command_handler))
         
-        # Административные команды
-        application.add_handler(admin_handler)
-        application.add_handler(send_to_handler)
-        application.add_handler(admin_report_callback)
-        application.add_handler(unblock_handler)
-        application.add_handler(broadcast_handler)
-        
-        application.bot_data['DEVELOPER_CHAT_ID'] = self.developer_chat_id
-        application.add_error_handler(error_handler)
+async def disabled_command_handler(update: Update, _context: ApplicationContext) -> None:
+    await update.message.reply_text("Данная команда была отключена")
 
-        # Задачи
-        if application.job_queue:
-            application.job_queue.run_daily(
-                cleanup_notes,
-                time=time(0, 0),
-                days=(0, 1, 2, 3, 4, 5, 6)
-            )
-
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
-        logging.info("Бот запущен")
-
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def error_handler(update: object, context: ApplicationContext) -> None:
+    comment: str = ""
+    
+    # If exception happended in message update, then notify about the error to the user
+    if isinstance(update, Update) and (message := update.message):
+        comment = "Пользователь получил сообщение об ошибке."
+        await message.reply_text("Произошла ошибка. Пожалуйста, попробуйте еще раз позже или свяжитесь с поддержкой.")
+    
+    # Log the error before we do anything else, so we can see it even if something breaks.
     logging.error("Exception while handling an update:", exc_info=context.error)
+    
+    if not (dev_chat_id := context.settings.DEVELOPER_CHAT_ID):
+        return
 
-    # Ограничиваем размер сообщения
-    def truncate_string(s: str, max_length: int = 1000) -> str:
-        return s[:max_length] + "..." if len(s) > max_length else s
+    update_str = update.to_dict() if isinstance(update, Update) else str(update)
+    message = (
+        "An exception was raised while handling an update\nSee latest.log to get trace back\n"
+        f"{comment}{"\n" if comment else ""}"
+        f"<pre>update = {html.escape(json.dumps(update_str, indent=2, ensure_ascii=False))}"
+        "</pre>\n\n"
+        f"<pre>chat_data = {html.escape(str(context.chat_data))}</pre>\n\n"
+        f"<pre>user_data = {html.escape(str(context.user_data))}</pre>\n\n"
+    )
 
-    try:
-        update_str = update.to_dict() if isinstance(update, Update) else str(update)
-        message = (
-            "An exception was raised while handling an update\n"
-            f"<pre>{html.escape(truncate_string(json.dumps(update_str, indent=2, ensure_ascii=False)))}</pre>\n"
-            f"<pre>chat_data = {html.escape(truncate_string(str(context.chat_data)))}</pre>\n"
-            f"<pre>user_data = {html.escape(truncate_string(str(context.user_data)))}</pre>\n"
-        )
-
-        await context.bot.send_message(
-            chat_id=context.application.bot_data['DEVELOPER_CHAT_ID'],
-            text=message,
-            parse_mode=ParseMode.HTML
-        )
-    except Exception as e:
-        logging.error(f"Failed to send error message: {e}")
+    # Finally, send the message
+    await context.bot.send_message(
+        chat_id=dev_chat_id, text=message, parse_mode=ParseMode.HTML
+    )
+    
+    
+application = (
+    ApplicationBuilder()
+    .token(settings.BOT_TOKEN)
+    # Processing updates concurrently is not recommended when stateful handlers like telegram.ext.ConversationHandler are used.
+    # https://docs.python-telegram-bot.org/en/latest/telegram.ext.applicationbuilder.html#telegram.ext.ApplicationBuilder.concurrent_updates
+    .concurrent_updates(False)
+    .post_init(on_post_init)
+    .context_types(context_types)
+    .build()
+)

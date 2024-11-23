@@ -1,10 +1,10 @@
 from .common import *
 
-async def cleansavelect_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
-    saved_lecturer = DATABASE.get_lecturer(user_id)
+async def cleansavelect_callback(update: Update, _context: ApplicationContext) -> None:
+    
+    saved_lecturer = await get_saved_lecturer(update.effective_user)
     if saved_lecturer:
-        DATABASE.clear_lecturer(user_id)
+        await set_saved_lecturer(update.effective_user, None)
         await update.message.reply_text(f"Сохраненный преподаватель {saved_lecturer} удален.")
     else:
-        await update.message.reply_text("У вас нет сохраненного преподавателя.")        
+        await update.message.reply_text("У вас нет сохраненного преподавателя.")

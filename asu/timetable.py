@@ -1,8 +1,7 @@
 from dataclasses import dataclass
 from datetime import date
 
-from asu.lecturer import Lecturer
-from asu.group import Group
+from database.models import Group, Lecturer
 
 @dataclass
 class Room:
@@ -22,9 +21,13 @@ class Subject:
     comment: str | None
     # name of groups
     groups: list[Group]
+    
     # name of lecturer
     lecturers: list[Lecturer]
     room: Room
+    
+    # Some subjects can have sub groups
+    sub_groups: list[str] | None = None
 
 @dataclass
 class Lesson:

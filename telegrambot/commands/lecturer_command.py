@@ -1,58 +1,63 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler, filters
+
+from database.models import Lecturer, SearchType
 from .common import *
 
-async def lecturer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def lecturer_callback(update: Update, context: ApplicationContext) -> int:
     """Обработчик команды /lecturer"""
     
-    if not ((message := update.message) and (user := message.from_user)):
-        return END
+    lecturer_name = ''.join(context.args) if context.args else ""
+    if lecturer_name:
+        return await handle_lecturer_by_name(update, context, lecturer_name)
     
-    # В групповых чатах сохранение преподавателя доступно только администраторам
-    is_group_chat = message.chat.type != 'private'
-    can_save = await check_group_permissions(update, user.id)
+    lecturer = await get_saved_lecturer(update.effective_user)
+    if lecturer:
+        await add_statistics(update.effective_user, SearchType.lecturer, lecturer.name)
+        
+        context.user_data.selected_schedule = lecturer
+        return await show_lecturer_options(update, context)
     
-    lecturer_name: str
-    
-    if context.args:
-        lecturer_name = ''.join(context.args)
-    elif (lecturer_name := DATABASE.get_lecturer(user.id) if not is_group_chat else None):
-        await update.message.reply_text(f"Используется сохраненный преподаватель: {lecturer_name}")
-    else:
-        await update.message.reply_text(
-            "Введите фамилию преподавателя:" if can_save else 
-            "В групповом чате необходимо указывать преподавателя после команды, например: /lecturer Иванов"
-        )
-        return GET_LECTURER_NAME if can_save else END
-    
-    return await handle_lecturer_schedule(update, context, lecturer_name)
+    await update.message.reply_text("Введите фамилию преподавателя:")
+    return GET_LECTURER_NAME
 
-async def get_lecturer_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def get_lecturer_name(update: Update, context: ApplicationContext) -> int:
     """Обработчик ввода фамилии преподавателя"""
     
-    if not ((message := update.message) and (lecturer_name := message.text)):
+    if not (lecturer_name := update.message.text):
         return END
     
-    return await handle_lecturer_schedule(update, context, lecturer_name)
+    if not lecturer_name:
+        await update.message.reply_text("Пожалуйста, введите корректную фамилию преподавателя")
+        return GET_GROUP_NAME
+    
+    return await handle_lecturer_by_name(update, context, lecturer_name)
 
-async def handle_lecturer_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE, lecturer_name: str) -> int:
+async def handle_lecturer_by_name(update: Update, context: ApplicationContext, lecturer_name: str) -> int:
     """Основной обработчик запроса расписания преподавателя"""
-    lecturer = await asu.find_lecturer_schedule(lecturer_name)
+    
+    # Limit to 50 symbols
+    lecturer_name = lecturer_name.strip()[:50]
+    
+    await add_statistics(update.effective_user, SearchType.lecturer, lecturer_name)
+    
+    lecturer = await asu.client.search_lecturer(lecturer_name)
     if not lecturer:
         await update.message.reply_text(
             "Преподаватель не найден. Пожалуйста, проверьте правильность написания фамилии и попробуйте снова."
         )
         return END
     
-    context.user_data[SELECTED_SCHEDULE] = lecturer
+    context.user_data.selected_schedule = lecturer
     
-    user_id = update.effective_user.id
-    if not DATABASE.get_lecturer(user_id):
-        return await ask_to_save_lecturer(update, context, lecturer.name)
+    if not (saved_lecturer := await get_saved_lecturer(update.effective_user)) \
+        or saved_lecturer.lecturer_id != lecturer.lecturer_id:
+            # Checking by lecturer id might be bad idea?
+            return await ask_to_save_lecturer(update, context, lecturer.name)
     
-    return await show_lecturer_schedule_options(update, context)
+    return await show_lecturer_options(update, context)
 
-async def ask_to_save_lecturer(update: Update, context: ContextTypes.DEFAULT_TYPE, lecturer_name: str) -> int:
+async def ask_to_save_lecturer(update: Update, _context: ApplicationContext, lecturer_name: str) -> int:
     keyboard = [
         [InlineKeyboardButton("Да", callback_data="save_lecturer_yes"),
          InlineKeyboardButton("Нет", callback_data="save_lecturer_no")]
@@ -64,25 +69,25 @@ async def ask_to_save_lecturer(update: Update, context: ContextTypes.DEFAULT_TYP
     )
     return SAVE_LECTURER
 
-async def save_lecturer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def save_lecturer_callback(update: Update, context: ApplicationContext) -> int:
     if not (query := update.callback_query):
         return END
     
     query = update.callback_query
-    _ = await query.answer()
+    await query.answer()
 
     if query.data == "save_lecturer_yes":
-        lecturer = context.user_data.get(SELECTED_SCHEDULE)
-        if lecturer:
-            user_id = update.effective_user.id
-            DATABASE.save_lecturer(user_id, lecturer.name)
+        lecturer = context.user_data.selected_schedule
+        if isinstance(lecturer, Lecturer):
+            await set_saved_lecturer(update.effective_user, lecturer)
+            await query.edit_message_text(f"Преподаватель {lecturer.name} сохранен.")
         else:
             await query.edit_message_text("Произошла ошибка при сохранении преподавателя.")
 
     # Показываем опции расписания после сохранения/отказа
-    return await show_lecturer_schedule_options(update, context)
+    return await show_lecturer_options(update, context)
 
-async def show_lecturer_schedule_options(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def show_lecturer_options(update: Update, context: ApplicationContext) -> int:
     """Показ опций выбора периода расписания для преподавателя"""
     keyboard = [
         [InlineKeyboardButton("Сегодня", callback_data="T")],
@@ -92,7 +97,7 @@ async def show_lecturer_schedule_options(update: Update, context: ContextTypes.D
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    lecturer: Lecturer = context.user_data[SELECTED_SCHEDULE]
+    lecturer = context.user_data.selected_schedule
     await update.effective_message.reply_text(
             f"👩‍🏫 Преподаватель: {lecturer.name}\nВыберите период расписания:",
             reply_markup=reply_markup)
@@ -108,7 +113,7 @@ lecturer_handler = ConversationHandler(
         ],
         SAVE_LECTURER: [CallbackQueryHandler(save_lecturer_callback, pattern='^save_lecturer_yes|save_lecturer_no$')],
     },
-    fallbacks=[MessageHandler(filters.COMMAND, cancel_conversation)],
+    fallbacks=[MessageHandler(filters.COMMAND, exit_conversation)],
     allow_reentry=True,
     per_message=False,
     per_user=True,

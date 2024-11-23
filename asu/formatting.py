@@ -68,7 +68,8 @@ class ScheduleFormatter:
         """Форматирует информацию о занятии в табличном стиле"""
         
         # Подгруппы
-        subgroups = ''.join([f"<i>{escape(group.sub_group)}</i> " for group in lesson.subject.groups if group.sub_group])
+        lesson_subgroups = lesson.subject.sub_groups or []
+        subgroups = ''.join([f"<i>{escape(group)}</i> " for group in lesson_subgroups])
         
         # Время
         time_block = f"{self._num_to_emoji(lesson.number)} {escape(lesson.time_start)}-{escape(lesson.time_end)}"

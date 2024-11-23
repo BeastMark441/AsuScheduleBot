@@ -1,13 +1,17 @@
-import os
+import asyncio
 import logging
 import logging.handlers
+import os
 from sys import stdout
-from dotenv import load_dotenv
 
-from telegrambot import TelegramBot
+from dotenv import load_dotenv
+from telegram.constants import UpdateType
+
+from database import db
+from telegrambot.bot import application
 
 def setup_logging() -> None:
-    level = logging.DEBUG if os.getenv("DEV") == 'True' else logging.INFO
+    level = logging.INFO
 
     os.makedirs("logs", exist_ok=True)
 
@@ -25,24 +29,20 @@ def setup_logging() -> None:
 
     # remove verbose logs from httpx
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    
+async def setup_database():
+    await db.run_migrations()
 
 def main() -> None:
     load_dotenv()
     setup_logging()
-
-    token = os.getenv('TOKEN')
-    if not token:
-        logging.error("Токен бота не найден в переменных окружения")
-        return
     
-    chat_id = int(os.getenv("DEVELOPER_CHAT_ID") or "0")
-
-    try:
-        bot = TelegramBot(token, chat_id)
-        bot.run()
-    except Exception as e:
-        logging.exception(f"Произошла ошибка при запуске бота: {e}")
-        raise e
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(setup_database())
+    
+    allowed_updates: list[str] = [UpdateType.MESSAGE, UpdateType.CALLBACK_QUERY]
+    application.run_polling(allowed_updates=allowed_updates, drop_pending_updates=True)
+    
 
 if __name__ == '__main__':
     main()
