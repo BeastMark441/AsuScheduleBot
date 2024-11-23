@@ -24,6 +24,13 @@ async def on_post_init(application: Application): # pyright: ignore[reportMissin
     application.add_handler(lecturer_handler)
     
     application.add_error_handler(error_handler)
+    
+    # TODO: remove when these commands will be fixed
+    for disabled_command in ["card", "report", "notes"]:
+        application.add_handler(CommandHandler(disabled_command, disabled_command_handler))
+        
+async def disabled_command_handler(update: Update, _context: ApplicationContext) -> None:
+    await update.message.reply_text("Данная команда была отключена")
 
 async def error_handler(update: object, context: ApplicationContext) -> None:
     comment: str = ""
