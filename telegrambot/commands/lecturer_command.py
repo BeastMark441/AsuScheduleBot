@@ -1,7 +1,7 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
-from database.models import Lecturer
+from database.models import Lecturer, SearchType
 from .common import *
 
 async def lecturer_callback(update: Update, context: ApplicationContext) -> int:
@@ -11,9 +11,11 @@ async def lecturer_callback(update: Update, context: ApplicationContext) -> int:
     if lecturer_name:
         return await handle_lecturer_by_name(update, context, lecturer_name)
     
-    group = await get_saved_group(update.effective_user)
-    if group:
-        context.user_data.selected_schedule = group
+    lecturer = await get_saved_lecturer(update.effective_user)
+    if lecturer:
+        await add_statistics(update.effective_user, SearchType.lecturer, lecturer.name)
+        
+        context.user_data.selected_schedule = lecturer
         return await show_lecturer_options(update, context)
     
     await update.message.reply_text("Введите фамилию преподавателя:")
@@ -36,6 +38,8 @@ async def handle_lecturer_by_name(update: Update, context: ApplicationContext, l
     
     # Limit to 50 symbols
     lecturer_name = lecturer_name.strip()[:50]
+    
+    await add_statistics(update.effective_user, SearchType.lecturer, lecturer_name)
     
     lecturer = await asu.client.search_lecturer(lecturer_name)
     if not lecturer:
