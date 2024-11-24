@@ -1,5 +1,4 @@
 from datetime import date
-from frozenlist import FrozenList
 from html import escape
 import logging
 
@@ -7,8 +6,8 @@ from asu.timetable import Lesson, TimeTable
 
 from utils.daterange import DateRange
 
-EMOJI_NUMBERS: FrozenList[str] = FrozenList(["0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"])
-USER_FRIENDLY_WEEKDAYS: FrozenList[str] = FrozenList(["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"])
+EMOJI_NUMBERS: list[str] = ["0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"]
+USER_FRIENDLY_WEEKDAYS: list[str] = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
 
 class ScheduleFormatter:
     """Класс для форматирования расписания"""

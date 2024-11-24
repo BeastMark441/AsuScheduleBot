@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "asuschedulebot"
+version = "0.1.0"
+description = ""
+authors = ["Leonid <48765566+DiFFoZ@users.noreply.github.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+python-telegram-bot = {extras = ["job-queue", "rate-limiter"], version = "^21.7"}
+sqlalchemy = {extras = ["asyncio"], version = "^2.0.36"}
+alembic = "^1.14.0"
+aiomysql = "^0.2.0"
+pydantic-settings = "^2.6.1"
+python-dotenv = "^1.0.1"
+
+
+[tool.poetry.group.dev.dependencies]
+basedpyright = "^1.22.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
