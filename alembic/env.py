@@ -1,13 +1,15 @@
 import asyncio
 import logging
-import os
 from logging.config import fileConfig
 
+from alembic import context
+from dotenv import load_dotenv
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from alembic import context
+from database import models
+from settings import Settings
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -19,15 +21,15 @@ if not logging.getLogger().handlers and config.config_file_name:
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Setup DB url from .env
-db_url = os.getenv("DATABASE_URL", "")
+db_url = Settings().DATABASE_URL
 if db_url:
-    config.set_main_option("sqlalchemy.url", db_url)
+    config.set_main_option("sqlalchemy.url", str(db_url))
 
 # add your model's MetaData object here
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-from database import models
+
 target_metadata = models.Base.metadata
 
 # other values from the config, defined by the needs of env.py,
