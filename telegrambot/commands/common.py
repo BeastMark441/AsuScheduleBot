@@ -139,15 +139,6 @@ async def handle_show_schedule(update: Update, context: ApplicationContext) -> i
         is_lecturer  # Передаем флаг is_lecturer
     )
 
-    timetable = await asu.client.get_schedule(selected_schedule, target_date)
-    formatted_timetable = asu.format_schedule(
-        timetable,
-        selected_schedule.schedule_url,
-        selected_schedule.name,
-        target_date,
-        is_lecturer
-    )
-
     await query.edit_message_text(
         formatted_timetable, 
         parse_mode=telegram.constants.ParseMode.HTML
