@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from settings import DatabaseSettings
 
 _database_url = DatabaseSettings().DATABASE_URL # pyright: ignore[reportCallIssue]
-_engine = create_async_engine(_database_url)
+_engine = create_async_engine(_database_url, pool_pre_ping=True, pool_recycle=3600)
 _db = async_sessionmaker(bind=_engine, expire_on_commit=False)
 
 async def create_session() -> AsyncGenerator[AsyncSession, None]:
