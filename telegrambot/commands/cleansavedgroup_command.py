@@ -6,6 +6,6 @@ async def cleansavegroup_callback(update: Update, _context: ApplicationContext) 
     saved_group = await get_saved_group(update.effective_user)
     if saved_group:
         await set_saved_group(update.effective_user, None)
-        await update.message.reply_text(f"Сохраненная группа {saved_group} удалена.")
+        await update.message.reply_text(f"Сохраненная группа {saved_group.name} удалена.")
     else:
         await update.message.reply_text("У вас нет сохраненной группы.")
