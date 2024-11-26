@@ -2,7 +2,7 @@ from typing import Any
 
 from telegram.ext import CallbackContext, ContextTypes, ExtBot
 
-from database.models import Group, Lecturer
+from database.models import Group, Lecturer, Note
 from settings import Settings
 
 class BotData:
@@ -10,9 +10,11 @@ class BotData:
     
 class UserData(dict[Any, Any]):
     selected_schedule: Group | Lecturer | None = None
+    note: Note | None = None
     
     def clear(self) -> None: # pyright: ignore[reportImplicitOverride]
         self.selected_schedule = None
+        self.note = None
         return super().clear()
     
 class ApplicationContext(CallbackContext[ExtBot[None], UserData, dict[Any, Any], BotData]):

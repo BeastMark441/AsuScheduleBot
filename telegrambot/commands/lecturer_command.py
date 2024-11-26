@@ -4,6 +4,8 @@ from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler, f
 from database.models import Lecturer, SearchType
 from .common import *
 
+GET_LECTURER_NAME, SAVE_LECTURER, SHOW_LECTURER_SCHEDULE = range(3)
+
 async def lecturer_callback(update: Update, context: ApplicationContext) -> int:
     """Обработчик команды /lecturer"""
     
