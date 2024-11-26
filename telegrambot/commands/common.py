@@ -15,11 +15,6 @@ import database.models as models
 
 END = ConversationHandler.END
 
-# Group states
-GET_GROUP_NAME, SAVE_GROUP, SHOW_SCHEDULE = range(3)
-# Lecturer states
-GET_LECTURER_NAME, SAVE_LECTURER, SHOW_LECTURER_SCHEDULE = range(3, 6)
-
 async def get_saved_group(user: User | None) -> models.Group | None:
     if not user:
         return None

@@ -7,6 +7,8 @@ from telegrambot.context import ApplicationContext
 
 from .common import *
 
+GET_GROUP_NAME, SAVE_GROUP, SHOW_SCHEDULE = range(3)
+
 async def schedule_callback(update: Update, context: ApplicationContext) -> int:
     """Обработчик команды /schedule"""
     

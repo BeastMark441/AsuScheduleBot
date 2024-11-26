@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 import enum
 
 from sqlalchemy import ForeignKey, String, Text, BigInteger, select
@@ -92,3 +92,13 @@ class Stat(Base):
     search_type: Mapped[SearchType] = mapped_column(nullable=False)
     search_query: Mapped[str] = mapped_column(String(255), nullable=False)
     timestamp: Mapped[datetime] = mapped_column(nullable=False)
+    
+class Note(Base):
+    __tablename__: str = "notes"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger(), nullable=False)
+    chat_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    text: Mapped[str] = mapped_column(String(512), nullable=False)
+    timestamp: Mapped[date] = mapped_column(nullable=False)
