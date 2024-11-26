@@ -51,14 +51,14 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await message.reply_text("У вас нет прав для использования этой команды.")
         return
     
-    # Если команда /admin без аргументов - показываем статистику
+    # Если команда /admin без аргументов - показываем статистик
     if not context.args:
         users = DATABASE.get_all_users()
         stats = (
             f"📊 <b>Статистика бота:</b>\n\n"
             f"👥 Всего пользователей: {len(users)}\n\n"
-            f"📚 С сохраненной группой: {sum(1 for u in users if u[1])}\n\n"
-            f"👨‍🏫 С сохраненным преподавателем: {sum(1 for u in users if u[2])}"
+            f"📚 С сохраненной группой: {sum(1 for u in users if u[2] is not None)}\n\n"
+            f"👨‍🏫 С сохраненным преподавателем: {sum(1 for u in users if u[3] is not None)}"
         )
         await message.reply_text(stats, parse_mode=ParseMode.HTML)
         return
@@ -110,19 +110,23 @@ async def broadcast_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
     await query.answer()
     
+    if not context.user_data:
+        context.user_data = {}
+        
     action, admin_id = query.data.split('_')[1:]
-    if int(admin_id) != update.effective_user.id:
+    if not update.effective_user or int(admin_id) != update.effective_user.id:
         await query.answer("Это действие доступно только инициатору рассылки", show_alert=True)
         return
         
     if action == 'cancel':
-        await query.message.edit_text("❌ Рассылка отменена.")
-        if context.user_data:
-            context.user_data.pop('broadcast_message', None)
+        if query.message:
+            await query.message.edit_text("❌ Рассылка отменена.")
+        context.user_data.pop('broadcast_message', None)
         return
         
     if not context.user_data or 'broadcast_message' not in context.user_data:
-        await query.message.edit_text("❌ Ошибка: сообщение для рассылки не найдено.")
+        if query.message:
+            await query.message.edit_text("❌ Ошибка: сообщение для рассылки не найдено.")
         return
         
     broadcast_message = context.user_data['broadcast_message']

@@ -7,6 +7,7 @@ from .report_command import report_handler, admin_report_callback, unblock_handl
 from .notes_command import notes_handler, cleanup_notes
 from .cleansavedgroup_command import cleansavegroup_callback
 from .cleansavedlecturer_command import cleansavelect_callback
+from .stats_command import stats_handler
 
 __all__ = [
     "start_callback",
@@ -22,5 +23,6 @@ __all__ = [
     "unblock_handler",
     "cleansavegroup_callback",
     "cleansavelect_callback",
-    "cleanup_notes"
+    "cleanup_notes",
+    "stats_handler"
 ]

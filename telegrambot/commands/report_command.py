@@ -51,6 +51,14 @@ async def report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not ((message := update.message) and (user := message.from_user)):
         return END
 
+    # Проверяем, не заблокирован ли пользователь
+    if DATABASE.is_report_denied(user.id):
+        await message.reply_text(
+            "❌ У вас ограничен доступ к отправке отчетов об ошибках.\n"
+            "Если вы считаете, что это ошибка, обратитесь к администраторам."
+        )
+        return END
+
     # В групповых чатах только администраторы могут отправлять отчеты
     if not await check_group_permissions(update, user.id):
         await message.reply_text(
@@ -81,21 +89,25 @@ async def report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return CATEGORY_SELECTION
 
 async def category_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обработчик выбора категории"""
     if not (query := update.callback_query):
         return END
-        
+    
     await query.answer()
     
-    if not context.user_data:
-        context.user_data.clear()
-        
-    context.user_data.update({'report_category': query.data})
+    # Очищаем существующие данные
+    if context.user_data:
+        context.user_data.clear()  # Очищаем существующие данные
+    
+    # Добавляем новые данные
+    context.user_data['report_category'] = query.data
     
     try:
+        if not query.message:
+            return END
+            
         if query.data == 'start':
             await query.message.edit_text("Вы вернулись в главное меню.")
-            context.user_data.clear()
+            context.user_data.clear()  # Очищаем данные при выходе
             return END
             
         if query.data == 'group_schedule':
@@ -277,7 +289,7 @@ async def admin_report_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         
     user_id = update.effective_user.id
     if not await check_admin_rights(update, user_id, 'can_manage_reports'):
-        await query.answer("У вас нет прав для управления отчетами")
+        await query.answer("У вас нет прав для упрвления отчетами")
         return
         
     await query.answer()

@@ -1,6 +1,6 @@
 from datetime import timedelta
 import typing
-from typing import Any
+from typing import Any, Optional
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, User
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
@@ -11,28 +11,37 @@ from .common import *
 
 async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик команды /schedule"""
-    
     if not ((message := update.message) and (user := message.from_user)):
         return END
     
-    # В групповых чатах сохранение группы доступно только администраторам
-    is_group_chat = message.chat.type != 'private'
-    can_save = await check_group_permissions(update, user.id)
+    # Добавляем индикатор загрузки
+    status_message = await message.reply_text("🔄 Загрузка...")
     
-    group_name: str
-    
-    if context.args:
-        group_name = ''.join(context.args)
-    elif (group_name := DATABASE.get_group(user.id) if not is_group_chat else None):
-        await update.message.reply_text(f"Используется сохраненная группа: {group_name}")
-    else:
-        await update.message.reply_text(
-            "Введите название группы:" if can_save else 
-            "В групповом чате необходимо указывать группу после команды, например: /schedule 305с11-4"
-        )
-        return GET_GROUP_NAME if can_save else END
-    
-    return await handle_schedule(update, context, group_name)
+    try:
+        # В групповых чатах сохранение группы доступно только администраторам
+        is_group_chat = message.chat.type != 'private'
+        can_save = await check_group_permissions(update, user.id)
+        
+        group_name: str
+        
+        if context.args:
+            group_name = ''.join(context.args)
+            await status_message.edit_text("🔍 Поиск группы...")
+        elif (group_name := DATABASE.get_group(user.id) if not is_group_chat else None):
+            await status_message.edit_text(f"📚 Используется сохраненная группа: {group_name}")
+        else:
+            await status_message.delete()
+            await message.reply_text(
+                "Введите номер группы:" if can_save else 
+                "В групповом чате необходимо указывать группу после команды, например: /schedule 305с11-4"
+            )
+            return GET_GROUP_NAME if can_save else END
+        
+        return await handle_schedule(update, context, group_name, status_message)
+    except Exception as e:
+        logging.error(f"Ошибка при обработке команды schedule: {e}")
+        await status_message.edit_text("❌ Произошла ошибка. Попробуйте позже.")
+        return END
 
 async def get_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик ввода названия группы"""
@@ -46,20 +55,25 @@ async def get_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     
     return await handle_schedule(update, context, group_name)
 
-async def handle_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE, group_name: str) -> int:
+async def handle_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                        group_name: str, status_message: Optional[Message] = None) -> int:
     """Основной обработчик запроса расписания"""
-    message = typing.cast(Message, update.message)
-    user_data = typing.cast(dict[Any, Any], context.user_data)
-    user = typing.cast(User, message.from_user)
+    if not update.effective_message or not update.effective_user:
+        return END
+        
+    message = update.effective_message
+    
+    if not context.user_data:
+        context.user_data = {}
     
     schedule = await asu.find_schedule_url(group_name)
     if not schedule:
         await message.reply_text("Ошибка получения группы. Пожалуйста, проверьте название и попробуйте снова")
         return END
     
-    user_data[SELECTED_SCHEDULE] = schedule
+    context.user_data[SELECTED_SCHEDULE] = schedule
     
-    if not DATABASE.get_group(user.id):
+    if not DATABASE.get_group(update.effective_user.id):
         return await ask_to_save_group(update, context, schedule.name)
     
     return await show_schedule_options(update, context)

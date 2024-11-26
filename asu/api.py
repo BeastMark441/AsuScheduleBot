@@ -4,28 +4,33 @@ import httpx
 import asyncio
 import logging
 from datetime import date, datetime
+import json
+import time
 
 from .timetable import Lesson, Room, Subject, TimeTable
 from .group import Group
 from .lecturer import Lecturer
 from utils.daterange import DateRange
+from database.mariadb import MariaDB
+from config.database import MARIADB_CONFIG
 
 ScheduleType = Group | Lecturer
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 class APIClient:
-    def __init__(self, token: str) -> None:
+    def __init__(self, token: str, db: MariaDB) -> None:
         if not token:
             raise ValueError("API token is required")
         self.token: str = token
+        self.db = db
         self.client: httpx.AsyncClient = httpx.AsyncClient(timeout=30.0)
         self.base_url: str = "https://www.asu.ru/timetable"
-
-        # lookup dict to get faculty id from code name
-        # Example: СПО - 15
         self.faculties: dict[str, str] = dict()
-        
+        self._request_semaphore = asyncio.Semaphore(5)  # Ограничиваем количество одновременных запросов
+        self._last_request = 0
+        self._min_request_interval = 0.5  # Минимальный интервал между запросами
+
     async def create_list_of_faculty_if_empty(self) -> None:
         if self.faculties:
             return
@@ -53,18 +58,33 @@ class APIClient:
         return params
     
     async def _make_request(self, url: str, params: dict[str, str]) -> dict[Any, Any]:
-        try:
-            await asyncio.sleep(2)  # Rate limiting
-            response = await self.client.get(url, params=params, follow_redirects=True)
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logging.error(f"API request failed: {str(e)}")
-            raise
+        """Оптимизированный метод запросов с ограничением частоты"""
+        async with self._request_semaphore:
+            now = time.time()
+            if now - self._last_request < self._min_request_interval:
+                await asyncio.sleep(self._min_request_interval - (now - self._last_request))
+            
+            try:
+                response = await self.client.get(url, params=params, follow_redirects=True)
+                response.raise_for_status()
+                self._last_request = time.time()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429:  # Too Many Requests
+                    await asyncio.sleep(2)
+                    return await self._make_request(url, params)
+                raise
 
     async def search_group(self, query: str) -> Group | None:
         if not query.strip():
             return None
+            
+        # Проверяем кеш
+        cached_result = self.db.get_cached_schedule('group', query.strip())
+        if cached_result:
+            if not cached_result['is_found']:
+                return None
+            return Group(**json.loads(cached_result['result_data']))
             
         url = self._build_url("search/students/")
         params = self._build_params({'query': query.strip()})
@@ -74,11 +94,20 @@ class APIClient:
             groups = data.get("groups", {}).get("records", [])
             
             if not groups:
+                # Кешируем отрицательный результат
+                self.db.cache_schedule('group', query.strip(), None, None, False)
                 return None
                 
             record = groups[0]
             faculty_id = record["path"].split("/")[0]
-            return Group(record["groupCode"], faculty_id, record["groupId"])
+            group = Group(record["groupCode"], faculty_id, record["groupId"])
+            
+            # Кешируем положительный результат
+            self.db.cache_schedule('group', query.strip(), 
+                                 group.__dict__, 
+                                 group.get_schedule_url(), 
+                                 True)
+            return group
         except Exception as e:
             logging.error(f"Failed to search group: {str(e)}")
             return None
@@ -86,6 +115,13 @@ class APIClient:
     async def search_lecturer(self, query: str) -> Lecturer | None:
         if not query.strip():
             return None
+            
+        # Проверяем кеш
+        cached_result = self.db.get_cached_schedule('lecturer', query.strip())
+        if cached_result:
+            if not cached_result['is_found']:
+                return None
+            return Lecturer(**json.loads(cached_result['result_data']))
             
         url = self._build_url("search/lecturers/")
         params = self._build_params({'query': query.strip()})
@@ -95,21 +131,33 @@ class APIClient:
             lecturers = data.get("lecturers", {}).get("records", [])
             
             if not lecturers:
+                # Кешируем отрицательный результат
+                self.db.cache_schedule('lecturer', query.strip(), None, None, False)
                 return None
-                
+            
             record = lecturers[0]
             path_parts = record["path"].rstrip('/').split('/')
             
             if len(path_parts) < 3:
+                # Кешируем отрицательный результат
+                self.db.cache_schedule('lecturer', query.strip(), None, None, False)
                 return None
-                
-            return Lecturer(
+            
+            lecturer = Lecturer(
                 name=record["lecturerName"],
                 faculty_id=path_parts[0],
                 chair_id=path_parts[1],
                 lecturer_id=path_parts[2],
-                position="" # FIXME
+                position=record.get("lecturerPosition", "") or ""
             )
+            
+            # Кешируем положительный результат
+            self.db.cache_schedule('lecturer', query.strip(), 
+                                 lecturer.__dict__, 
+                                 lecturer.get_schedule_url(), 
+                                 True)
+            return lecturer
+            
         except Exception as e:
             logger.error(f"Failed to search lecturer: {str(e)}")
             return None
@@ -137,7 +185,7 @@ class APIClient:
             logger.info("Найдено %d записей в расписании", len(records))
 
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug("Записи расписания: {}".format(records))
+                logger.debug("Записи рас��исания: {}".format(records))
             
             if not records:
                 logger.warning("Расписание пустое")
@@ -247,8 +295,59 @@ class APIClient:
         
         return lesson
 
+    async def get_timetable(self, schedule: ScheduleType, target_date: DateRange) -> TimeTable:
+        # initialize dict lookup
+        await self.create_list_of_faculty_if_empty()
+        
+        # Проверяем кеш расписания
+        schedule_cache = self.db.get_cached_schedule(
+            'group' if isinstance(schedule, Group) else 'lecturer',
+            schedule.name
+        )
+        
+        if schedule_cache:
+            cached_timetable = self.db.get_cached_timetable(
+                schedule_cache['id'],
+                target_date.start_date,
+                target_date.end_date
+            )
+            if cached_timetable:
+                # Десериализуем данные из JSON
+                cached_data = json.loads(cached_timetable['timetable_data'])
+                return TimeTable.from_dict(cached_data)
+
+        # Если нет в кеше, получаем из API
+        url: str = schedule.get_schedule_url()
+        params: dict[str, str] = self._build_params()
+        params['date'] = self._format_date_param(target_date)
+            
+        try:
+            data = await self._make_request(url, params)
+            timetable = self._process_schedule_data(
+                data.get("schedule", {}).get("records", []), 
+                target_date
+            )
+            
+            # Кешируем результат
+            if schedule_cache and timetable.days:
+                self.db.cache_timetable(
+                    schedule_cache['id'],
+                    target_date.start_date,
+                    target_date.end_date,
+                    timetable
+                )
+                
+            return timetable
+            
+        except Exception as e:
+            logging.error(f"Failed to get schedule: {e}")
+            return TimeTable({})
+
+# Создаем экземпляр базы данных
+db = MariaDB(**MARIADB_CONFIG)
+
 # Создаем глобальный экземпляр клиента
-api_client = APIClient(os.getenv('ASU', ''))
+api_client = APIClient(os.getenv('ASU_TOKEN', ''), db)
 
 # Экспортируем функции для обратной совместимости
 async def find_schedule_url(group_name: str) -> Group | None:
@@ -258,4 +357,4 @@ async def find_lecturer_schedule(lecturer_name: str) -> Lecturer | None:
     return await api_client.search_lecturer(lecturer_name)
 
 async def get_timetable(schedule: ScheduleType, target_date: DateRange) -> TimeTable:
-    return await api_client.get_schedule(schedule, target_date)
+    return await api_client.get_timetable(schedule, target_date)

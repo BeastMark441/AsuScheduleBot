@@ -30,7 +30,7 @@ def main() -> None:
     load_dotenv()
     setup_logging()
 
-    token = os.getenv('TOKEN')
+    token = os.getenv('ASU_BOT_TOKEN')
     if not token:
         logging.error("Токен бота не найден в переменных окружения")
         return

@@ -171,7 +171,7 @@ class Database:
     def add_note(self, user_id: int, chat_id: int, subject: str, note_text: str, note_date: date) -> bool:
         """Добавляет новую заметку"""
         try:
-            # Проверяем количество заметок пользователя
+            # Проверяем количество заметок пользов��теля
             if chat_id < 0:  # Групповой чат
                 count = self.cursor.execute(
                     'SELECT COUNT(*) FROM notes WHERE chat_id = ?', 
@@ -196,39 +196,22 @@ class Database:
             logging.error(f"Ошибка при добавлении заметки: {e}")
             return False
 
-    def get_notes(self, user_id: int, chat_id: int, date: date | None = None) -> list[tuple]:
+    def get_notes(self, user_id: int, chat_id: int, date: date | None = None) -> list[tuple[int, int, int, str, str, date]]:
         """Получает заметки пользователя"""
         try:
             if date:
-                if chat_id < 0:  # Групповой чат
-                    return self.cursor.execute('''
-                    SELECT id, subject, note_text, note_date, user_id
-                    FROM notes 
-                    WHERE chat_id = ? AND note_date = ?
-                    ORDER BY note_date
-                    ''', (chat_id, date)).fetchall()
-                else:  # Личный чат
-                    return self.cursor.execute('''
-                    SELECT id, subject, note_text, note_date, user_id
-                    FROM notes 
+                self.cursor.execute('''
+                    SELECT * FROM notes 
                     WHERE user_id = ? AND chat_id = ? AND note_date = ?
-                    ORDER BY note_date
-                    ''', (user_id, chat_id, date)).fetchall()
+                    ORDER BY note_date DESC
+                ''', (user_id, chat_id, date))
             else:
-                if chat_id < 0:  # Групповой чат
-                    return self.cursor.execute('''
-                    SELECT id, subject, note_text, note_date, user_id
-                    FROM notes 
-                    WHERE chat_id = ?
-                    ORDER BY note_date
-                    ''', (chat_id,)).fetchall()
-                else:  # Личный чат
-                    return self.cursor.execute('''
-                    SELECT id, subject, note_text, note_date, user_id
-                    FROM notes 
+                self.cursor.execute('''
+                    SELECT * FROM notes 
                     WHERE user_id = ? AND chat_id = ?
-                    ORDER BY note_date
-                    ''', (user_id, chat_id)).fetchall()
+                    ORDER BY note_date DESC
+                ''', (user_id, chat_id))
+            return self.cursor.fetchall()
         except Exception as e:
             logging.error(f"Ошибка при получении заметок: {e}")
             return []
