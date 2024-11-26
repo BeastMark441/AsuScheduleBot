@@ -1,5 +1,8 @@
+# ASU Schedule Bot
+
+## Установка
 pip install mariadb cachetools
 
-миграции
+## Миграции
 python scripts/migrate_to_mariadb.py
 
