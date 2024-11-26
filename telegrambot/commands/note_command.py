@@ -38,7 +38,7 @@ async def action_handler(update: Update, context: ApplicationContext) -> int:
             # Check for permissions in groups
             member = await update.effective_chat.get_member(update.effective_user.id)
             if member.status not in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR]:
-                await update.message.reply_text(
+                await query.edit_message_text(
                     "В групповом чате оставлять заметки могут только администраторы."
                 )
                 return END
