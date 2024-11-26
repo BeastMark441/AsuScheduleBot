@@ -1,8 +1,8 @@
-from pydantic import Field, MariaDBDsn
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 class DatabaseSettings(BaseSettings):
-    DATABASE_URL: MariaDBDsn = Field(default=...)
+    DATABASE_URL: str = Field(default=...)
     
 class TelegramSettings(BaseSettings):
     BOT_TOKEN: str = Field(default=...)
