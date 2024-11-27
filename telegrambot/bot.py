@@ -23,6 +23,7 @@ async def on_post_init(application: Application): # pyright: ignore[reportMissin
     application.add_handler(schedule_handler)
     application.add_handler(lecturer_handler)
     application.add_handler(notes_handler)
+    application.add_handler(card_handler)
     
     application.add_error_handler(error_handler)
     
