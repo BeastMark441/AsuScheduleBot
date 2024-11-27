@@ -1,8 +1,8 @@
 {
     "exclude": ["alembic/versions"],
-    "reportOptionalMemberAccess": "warning",
-    "reportOptionalSubscript": "warning",
+    "reportOptionalMemberAccess": "hint",
+    "reportOptionalSubscript": "hint",
     "reportAny": "none",
     "reportUnusedCallResult": "none",
-    "reportExplicitAny": "none"
+    "reportExplicitAny": "none",
 }

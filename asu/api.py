@@ -17,7 +17,7 @@ from .timetable import Lesson, Room, Subject, TimeTable
 ScheduleType = Group | Lecturer
 
 _logger: logging.Logger = logging.getLogger(__name__)
-_settings: Settings = Settings() # pyright: ignore [reportCallIssue]
+_settings: Settings = Settings()
 
 class APIClient:
     def __init__(self, token: str) -> None:

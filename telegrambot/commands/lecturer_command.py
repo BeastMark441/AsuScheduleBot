@@ -31,7 +31,7 @@ async def get_lecturer_name(update: Update, context: ApplicationContext) -> int:
     
     if not lecturer_name:
         await update.message.reply_text("Пожалуйста, введите корректную фамилию преподавателя")
-        return GET_GROUP_NAME
+        return GET_LECTURER_NAME
     
     return await handle_lecturer_by_name(update, context, lecturer_name)
 

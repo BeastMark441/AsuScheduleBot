@@ -10,7 +10,7 @@ from settings import Settings
 from telegrambot.commands import *
 from telegrambot.context import ApplicationContext, context_types
 
-settings = Settings() # pyright: ignore[reportCallIssue]
+settings = Settings()
 
 # pyright: reportUnknownMemberType=false
 async def on_post_init(application: Application): # pyright: ignore[reportMissingTypeArgument, reportUnknownParameterType]
