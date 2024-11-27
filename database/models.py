@@ -18,6 +18,7 @@ class Group(Base):
     group_id: Mapped[int] = mapped_column(nullable=False)
     faculty_id: Mapped[int] = mapped_column(nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    technical_cards_link: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     
     @property
     def schedule_url(self) -> str:
