@@ -30,14 +30,19 @@ async def disabled_command_handler(update: Update, _context: ApplicationContext)
     await update.message.reply_text("Данная команда была отключена")
 
 async def error_handler(update: object, context: ApplicationContext) -> None:
+    # Log the error before we do anything else, so we can see it even if something breaks.
+    logging.error("Exception while handling an update:", exc_info=context.error)
+    
     # If exception happended in message update, then notify about the error to the user
     if isinstance(update, Update) and (message := update.message):
         await message.reply_text("Произошла ошибка. Пожалуйста, попробуйте еще раз позже или свяжитесь с поддержкой.")
     
-    # Log the error before we do anything else, so we can see it even if something breaks.
-    logging.error("Exception while handling an update:", exc_info=context.error)
-    
     if not (dev_chat_id := context.settings.DEVELOPER_CHAT_ID):
+        return
+    
+    # Do not send error message to devs, if update is null.
+    # The reason update may be null is because of network error (httpx.ReadError)
+    if update is None:
         return
 
     update_str = update.to_dict() if isinstance(update, Update) else str(update)
