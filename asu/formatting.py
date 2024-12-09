@@ -89,15 +89,15 @@ class ScheduleFormatter:
         
         # Формируем табличный вывод
         formatted = (
-            f"┌─ {time_block}\n"
-            f"├─ {subject_block}\n"
-            f"├─ {people_block}\n"
-            f"└─ {room_block}\n"
+            f"{time_block}\n"
+            f"{subject_block}\n"
+            f"{people_block}\n"
+            f"{room_block}\n"
         )
         
         # Добавляем комментарий если есть
         if lesson.subject.comment:
-            formatted = formatted[:-1] + f"\n└─ 💬 {escape(lesson.subject.comment)}\n"
+            formatted = formatted[:-1] + f"\n💬 {escape(lesson.subject.comment)}\n"
         
         return formatted
 
